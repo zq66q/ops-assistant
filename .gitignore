@@ -1,0 +1,12 @@
+.env
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info
+.vscode
+.idea
+*.log
+data/*.db
+eval/results.md
+.DS_Store

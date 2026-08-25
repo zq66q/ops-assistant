@@ -1,0 +1,454 @@
+{
+  "timestamp": "2026-08-25 21:21:35",
+  "direct": {
+    "correct": 19,
+    "total": 19,
+    "accuracy": 1.0
+  },
+  "followup": {
+    "correct": 15,
+    "total": 15,
+    "accuracy": 1.0
+  },
+  "total": {
+    "correct": 34,
+    "total": 34,
+    "accuracy": 1.0
+  },
+  "details": [
+    {
+      "id": "arch-1",
+      "query": "openclow 后端和前端分别用什么框架？",
+      "category": "direct",
+      "expected": [
+        "FastAPI",
+        "Streamlit"
+      ],
+      "answer": "根据参考信息，openclow 的技术栈如下：\n\n- **后端**：FastAPI，默认端口 8000\n- **前端**：Streamlit，默认端口 8501\n\n（来源：参考信息“技术栈”部分）",
+      "correct": true,
+      "rewritten": "openclow 后端和前端分别用什么框架？"
+    },
+    {
+      "id": "arch-2",
+      "query": "openclow 的架构分层有几层？",
+      "category": "direct",
+      "expected": [
+        "7",
+        "L1",
+        "L7"
+      ],
+      "answer": "根据参考信息，openclow 采用 **L1~L7 共 7 层** 分层架构：\n\n1. **L1**：LLM 客户端  \n2. **L2**：嵌入与向量  \n3. **L3**：RAG 检索  \n4. **L4**：记忆  \n5. **L5**：Agent  \n6. **L6**：业务场景  \n7. **L7**：API / UI  \n\n（来源：参考信息“分层架构”部分）",
+      "correct": true,
+      "rewritten": "openclow 的架构分层有几层？"
+    },
+    {
+      "id": "arch-3",
+      "query": "生产环境的反向代理用的是什么？",
+      "category": "direct",
+      "expected": [
+        "Caddy"
+      ],
+      "answer": "根据参考信息，生产环境的反向代理使用的是 **Caddy**，负责 80/443 端口及自动 HTTPS（来源：`# openclow 项目架构与访问方式` → `技术栈`）。\n\n**补充说明**：\n- 备案通过前，80/443 被封，Caddy 无法启动，需通过 `IP:8000` / `IP:8501` 直接访问（来源：`## 5.备案期 Caddy 无法启动`）。\n- 备案通过后，Caddy 启用，前端走 `https://psyidc.com`，后端走 `https://psyidc.com/api`（来源：`生产访问方式` 表格）。",
+      "correct": true,
+      "rewritten": "生产环境的反向代理用的是什么？"
+    },
+    {
+      "id": "deploy-1",
+      "query": "服务器上 openclow 实际是用什么方式运行的？",
+      "category": "direct",
+      "expected": [
+        "systemd",
+        "openclaw-api.service",
+        "openclaw-ui.service"
+      ],
+      "answer": "根据参考信息，openclow 在服务器上是通过 **systemd** 方式运行的，具体如下：\n\n- **服务单元**：`openclaw-api.service`（后端）和 `openclaw-ui.service`（前端）\n- **代码目录**：`/opt/openclow`\n- **Python 环境**：`/opt/miniconda/envs/openclaw`\n- **启动命令**：`cli.py serve`\n- **数据目录**：`/opt/openclow/data/`\n\n**重要说明**：虽然项目仓库里有 Dockerfile 和 docker-compose.prod.yml，但实际生产服务器上**不是用 Docker**，而是用 conda + systemd 部署的。Docker 方案保留为后续备案通过、Caddy 可用时的迁移目标。\n\n来源：《服务器部署与更新流程》《openclow 项目架构与访问方式》",
+      "correct": true,
+      "rewritten": "服务器上 openclow 实际是用什么方式运行的？"
+    },
+    {
+      "id": "deploy-2",
+      "query": "部署目录在哪里？",
+      "category": "direct",
+      "expected": [
+        "/opt/openclow"
+      ],
+      "answer": "根据参考信息，openclow 项目的部署目录是：\n\n**`/opt/openclow`**\n\n相关说明：\n- 代码目录：`/opt/openclow`（不是 git 仓库，更新方式为 SFTP 上传后 `systemctl restart`）\n- 数据目录：`/opt/openclow/data/`\n- Python 环境：`/opt/miniconda/envs/openclaw`\n\n来源：参考信息中“项目位置”部分明确列出。",
+      "correct": true,
+      "rewritten": "部署目录在哪里？"
+    },
+    {
+      "id": "deploy-3",
+      "query": "代码更新到服务器后要怎么生效？",
+      "category": "direct",
+      "expected": [
+        "SFTP",
+        "systemctl restart",
+        "restart"
+      ],
+      "answer": "根据参考信息，代码更新到服务器后的生效流程如下：\n\n1. **本地检查**：改完代码后，先执行 `py_compile` 检查语法。\n2. **上传代码**：用 SFTP 将代码上传到服务器目录 `/opt/openclow`。\n3. **重启服务**：在服务器上执行以下命令使更新生效：\n   ```bash\n   systemctl restart openclaw-api.service\n   systemctl restart openclaw-ui.service\n   ```\n4. **检查状态**：确认服务正常运行：\n   ```bash\n   systemctl status openclaw-api.service\n   journalctl -u openclaw-api.service -n 100 --no-pager\n   ```\n\n**注意**：生产服务器上运行的是 systemd 服务（`openclaw-api.service` 和 `openclaw-ui.service`），不是 Docker。代码目录 `/opt/openclow` 不是 git 仓库，更新方式为 SFTP 上传后重启服务。（来源：服务器部署与更新流程）",
+      "correct": true,
+      "rewritten": "代码更新到服务器后要怎么生效？"
+    },
+    {
+      "id": "port-1",
+      "query": "备案期间 80 和 443 为什么访问不了？",
+      "category": "direct",
+      "expected": [
+        "被封",
+        "备案",
+        "管局"
+      ],
+      "answer": "根据参考信息，备案审核期间 80 和 443 端口被封是**正常且预期的策略**，原因如下：\n\n**直接原因**：备案审核期间，工信部要求关闭 80 和 443 端口，防止未备案域名通过 Web 服务对外提供访问。\n\n**具体影响**：\n- 无法通过 `http://psyidc.com` 或 `https://psyidc.com` 访问\n- Caddy 自动 HTTPS 无法工作（依赖 80/443 端口申请证书）\n\n**替代访问方式**（备案期间可用）：\n- 后端 Swagger：`http://103.236.98.200:8000/docs`\n- 前端界面：`http://103.236.98.200:8501`\n- SSH：22 端口不受影响\n\n**备案通过后**：80/443 解封，Caddy 自动申请证书，可通过 `https://psyidc.com` 统一访问。\n\n> 来源：参考信息「备案期端口策略」及「备案通过后会怎样」章节。",
+      "correct": true,
+      "rewritten": "备案期间 80 和 443 为什么访问不了？"
+    },
+    {
+      "id": "port-2",
+      "query": "备案期间怎么访问后端和前端？",
+      "category": "direct",
+      "expected": [
+        "103.236.98.200:8000",
+        "103.236.98.200:8501",
+        "IP:8000",
+        "IP:8501"
+      ],
+      "answer": "根据参考信息，备案期间（80/443 端口被封）可通过以下临时地址访问：\n\n- **后端 Swagger**：http://103.236.98.200:8000/docs\n- **前端界面**：http://103.236.98.200:8501\n\n备案通过后，80/443 端口解封，Caddy 自动申请 HTTPS 证书，届时可通过 https://psyidc.com 统一访问前后端（来源：备案期临时访问地址、备案通过后会怎样）。",
+      "correct": true,
+      "rewritten": "备案期间怎么访问后端和前端？"
+    },
+    {
+      "id": "port-3",
+      "query": "FastAPI 和 Streamlit 默认分别跑在哪个端口？",
+      "category": "direct",
+      "expected": [
+        "8000",
+        "8501"
+      ],
+      "answer": "根据参考信息：\n\n- **FastAPI 后端**：默认端口 **8000**\n- **Streamlit 前端**：默认端口 **8501**\n\n来源：参考信息「技术栈」部分明确标注“后端：FastAPI，默认端口 8000；前端：Streamlit，默认端口 8501”。",
+      "correct": true,
+      "rewritten": "FastAPI 和 Streamlit 默认分别跑在哪个端口？"
+    },
+    {
+      "id": "auth-1",
+      "query": "openclow API 鉴权用什么请求头？",
+      "category": "direct",
+      "expected": [
+        "X-API-Key"
+      ],
+      "answer": "根据参考信息，openclow API 鉴权使用 **`X-API-Key`** 请求头，格式如下：\n\n```\nX-API-Key: oc_qHL-1p5j9f0hwRYGTg28fBId9iapGXWB\n```\n\n**关键说明：**\n- API Key 以 `oc_` 开头，存储在服务器 `/opt/openclow/.env` 的 `OPENCLAW_API_KEYS` 变量中\n- 未带 Key 或 Key 错误时，接口返回 401：`{\"detail\": \"Invalid or missing API Key\"}`\n\n来源：参考信息「API 鉴权与 Swagger 测试」章节。",
+      "correct": true,
+      "rewritten": "openclow API 鉴权用什么请求头？"
+    },
+    {
+      "id": "auth-2",
+      "query": "API Key 在 .env 里存在哪个变量？",
+      "category": "direct",
+      "expected": [
+        "OPENCLAW_API_KEYS"
+      ],
+      "answer": "根据参考信息，API Key 存储在 `/opt/openclaw/.env` 的 **`OPENCLAW_API_KEYS`** 变量中（来源：API 鉴权与 Swagger 测试章节）。\n\nAPI Key 以 `oc_` 开头，通过 `X-API-Key` 请求头进行鉴权。",
+      "correct": true,
+      "rewritten": "API Key 在 .env 里存在哪个变量？"
+    },
+    {
+      "id": "auth-3",
+      "query": "Swagger 页面上怎么带认证？",
+      "category": "direct",
+      "expected": [
+        "Authorize",
+        "X-API-Key"
+      ],
+      "answer": "根据参考信息，在 Swagger 页面带认证的操作步骤如下：\n\n1. **打开 Swagger 页面**：访问 `http://103.236.98.200:8000/docs`\n2. **点击右上角 Authorize 按钮**\n3. **输入 API Key**：直接粘贴完整的 Key（如 `oc_qHL-1p5j9f0hwRYGTg28fBId9iapGXWB`），不需要额外格式\n4. **关闭弹窗**：之后带锁的接口会自动带上 `X-API-Key` 请求头\n\n**注意事项**：\n- 如果 Swagger 页面没有 Authorize 按钮，可能是自定义 `openapi()` 未声明 `ApiKeyAuth` 安全方案，需在 `src/api/server.py` 中补充 `securitySchemes` 和全局 `security` 声明。\n- 未带 Key 或 Key 错误时，接口会返回 401：`{\"detail\": \"Invalid or missing API Key\"}`。\n\n来源：《API 鉴权与 Swagger 测试》",
+      "correct": true,
+      "rewritten": "Swagger 页面上怎么带认证？"
+    },
+    {
+      "id": "rag-1",
+      "query": "RAG ingest 返回 chunks:0 一定是失败吗？",
+      "category": "direct",
+      "expected": [
+        "不一定",
+        "去重",
+        "内容未变"
+      ],
+      "answer": "不一定。根据参考信息，openclow 会对相同 source 做去重：如果内容没变，会跳过入库，返回 `chunks: 0`。日志里通常会看到 `ingest skipped: content unchanged`。\n\n来源：常见问题 - /rag/ingest 返回 chunks:0 是失败了吗？",
+      "correct": true,
+      "rewritten": "RAG ingest 返回 chunks:0 一定是失败吗？"
+    },
+    {
+      "id": "rag-2",
+      "query": "RAG 和 memory 有什么关系？",
+      "category": "direct",
+      "expected": [
+        "两套",
+        "独立",
+        "不同"
+      ],
+      "answer": "RAG 和 Memory 是 openclow 中两个不同的能力模块，主要区别如下：\n\n| 维度 | RAG | Memory |\n|------|-----|--------|\n| **内容** | 文档、知识库（如部署文档、API 说明） | 用户相关的事实、偏好（如“用户是张经理、偏好简洁回答”） |\n| **存储** | 向量库（ChromaDB） | SQLite（`data/memory.db`） |\n| **使用方式** | 按问题检索（`/rag/search`） | 按用户检索（`/memory/search`） |\n| **写入方式** | 通过 `/rag/ingest` 或 `/rag/upload` 入库 | 业务逻辑主动写入 |\n\n**简单来说：**\n- **RAG** 解决的是“知识获取”问题——从文档库中检索相关内容辅助 LLM 回答。\n- **Memory** 解决的是“用户记忆”问题——保存跨会话的用户画像和长期偏好。\n\n两者互补：RAG 提供通用知识，Memory 提供个性化上下文。（来源：《RAG 知识库与记忆的区别》）",
+      "correct": true,
+      "rewritten": "RAG 和 memory 有什么关系？"
+    },
+    {
+      "id": "followup-1",
+      "query": "那备案期间怎么访问它？",
+      "category": "followup",
+      "expected": [
+        "103.236.98.200:8000",
+        "IP:8000",
+        "8000"
+      ],
+      "answer": "备案期间，由于 80 和 443 端口被封，**不能通过域名 http://psyidc.com 或 https://psyidc.com 访问**，但可以通过服务器 IP 加端口直接访问：\n\n- **前端界面**：http://103.236.98.200:8501\n- **后端 Swagger**：http://103.236.98.200:8000/docs\n\n（来源：参考信息“备案期临时访问地址”）\n\n备案通过后，80/443 解封，Caddy 会自动申请 HTTPS 证书，届时可通过 https://psyidc.com 统一访问。",
+      "correct": true,
+      "rewritten": "openclow 部署在 psyidc.com 且备案还没通过，备案期间 80/443 端口被封，但 22、8000、8501 端口可以访问，那么备案期间如何访问 openclow？"
+    },
+    {
+      "id": "followup-2",
+      "query": "它的前端跑在哪个端口？",
+      "category": "followup",
+      "expected": [
+        "8501"
+      ],
+      "answer": "前端跑在 **8501 端口**（Streamlit）。\n\n- 开发模式：`http://localhost:8501`\n- 备案期生产：`http://103.236.98.200:8501`\n- 备案通过后：`https://psyidc.com`（由 Caddy 反代，不再直接暴露 8501）\n\n来源：参考信息“生产访问方式”及“备案期临时访问地址”部分。",
+      "correct": true,
+      "rewritten": "openclow 前端（Streamlit）跑在哪个端口？"
+    },
+    {
+      "id": "followup-3",
+      "query": "这个端口能直接访问吗？",
+      "category": "followup",
+      "expected": [
+        "可以",
+        "能",
+        "IP:8000",
+        "8000"
+      ],
+      "answer": "根据参考信息，**可以直接访问**，但需要区分环境和鉴权要求：\n\n**生产模式（备案通过前）**：\n- 后端：`http://103.236.98.200:8000` — 可直接访问，但接口需要 `X-API-Key` 鉴权（`oc_` 开头）\n- 前端：`http://103.236.98.200:8501` — 可直接访问\n\n**生产模式（备案通过后）**：\n- 后端：`https://psyidc.com/api`\n- 前端：`https://psyidc.com`\n\n**注意事项**：\n1. 备案通过前，80/443 端口被封，Caddy 无法启动，只能通过 IP:端口 直接访问（来源：排障案例 5）\n2. 后端接口未带 Key 会返回 401（来源：API 鉴权部分）\n3. 前端页面不能直接暴露 Key，必须由后端转发（来源：安全注意）\n\n**结论**：当前若处于备案期，`103.236.98.200:8000` 和 `:8501` 均可直接访问，但后端 API 需携带 Key。",
+      "correct": true,
+      "rewritten": "OpenClow 后端 FastAPI 跑在 8000 端口，这个端口能直接访问吗？"
+    },
+    {
+      "id": "followup-4",
+      "query": "那它是用 Docker 跑的吗？",
+      "category": "followup",
+      "expected": [
+        "systemd",
+        "不是",
+        "不是 Docker"
+      ],
+      "answer": "不是，openclow 项目实际生产环境**不是用 Docker 跑的**。\n\n虽然项目仓库里有 `Dockerfile` 和 `docker-compose.prod.yml`，但实际生产服务器上运行的是 **systemd 服务**，具体包括：\n- `openclaw-api.service`\n- `openclaw-ui.service`\n\n代码目录位于 `/opt/openclow`，更新方式为 SFTP 上传后执行 `systemctl restart`。\n\n> 来源：参考信息「重要区别」部分\n\n另外，排障时也提醒过：**文档写 Docker，但实际排查时发现没有容器在跑**，部署用的是 systemd + conda 方案。所以生产排障第一步永远是验证实际运行环境，不要盲信文档。\n\n> 来源：参考信息「Docker vs systemd confusion」部分",
+      "correct": true,
+      "rewritten": "OpenClow 部署在 103.236.98.200 时，它是用 Docker 跑的吗？"
+    },
+    {
+      "id": "followup-5",
+      "query": "这种情况下我怎么查进度？",
+      "category": "followup",
+      "expected": [
+        "腾讯云备案控制台",
+        "console.cloud.tencent.com/beian",
+        "腾讯云"
+      ],
+      "answer": "根据参考信息，您可以通过以下方式查询备案进度：\n\n**备案进度查询**\n- 腾讯云备案控制台：https://console.cloud.tencent.com/beian （备案提交方为腾讯云，可查看审核进度）\n\n**备案是否通过查询**\n- 工信部官网：https://beian.miit.gov.cn\n- 站长工具：https://icp.chinaz.com/psyidc.com\n\n**当前状态说明**\n- 备案审核中，工信部系统尚未能查到（来源：ICP 备案与端口访问-备案现状）\n\n**备案期间临时访问方式**\n- 后端 Swagger：http://103.236.98.200:8000/docs\n- 前端界面：http://103.236.98.200:8501\n\n> 注意：备案审核期间 80/443 端口被封，无法通过域名访问，需使用上述 IP+端口方式。备案通过后 80/443 解封，可通过 https://psyidc.com 访问。",
+      "correct": true,
+      "rewritten": "我的域名 psyidc.com 在腾讯云提交备案后，这种情况下我怎么查询备案进度？"
+    },
+    {
+      "id": "followup-6",
+      "query": "它的密钥存在哪里？",
+      "category": "followup",
+      "expected": [
+        ".env",
+        "OPENCLAW_API_KEYS"
+      ],
+      "answer": "根据参考信息，API Key 存储在 **`/opt/openclaw/.env`** 文件的 **`OPENCLAW_API_KEYS`** 变量中（注意：参考信息中同时出现了 `openclow` 和 `openclaw` 两种拼写，此处按原文引用）。\n\n**来源**：参考信息“API 鉴权与 Swagger 测试”章节中明确说明：“API Key 以 `oc_` 开头，存储在 `/opt/openclaw/.env` 的 `OPENCLAW_API_KEYS` 变量中。”\n\n**安全提醒**（同样来自参考信息）：\n- API Key 属于敏感信息，不要写在公开仓库里\n- 如果怀疑泄露，立即在服务器 .env 中更换，并重启服务\n- 前端页面不能直接暴露 Key，必须由后端转发",
+      "correct": true,
+      "rewritten": "OpenClow 使用 X-API-Key 鉴权时，它的密钥存储在哪里？"
+    },
+    {
+      "id": "followup-7",
+      "query": "这个服务启动命令是什么？",
+      "category": "followup",
+      "expected": [
+        "cli.py serve",
+        "serve"
+      ],
+      "answer": "根据参考信息，openclow 服务的启动命令如下：\n\n**启动命令：**\n```bash\ncli.py serve\n```\n\n**实际运行方式（systemd 管理）：**\n```bash\n# 查看状态\nsystemctl status openclaw-api.service\nsystemctl status openclaw-ui.service\n\n# 重启服务\nsystemctl restart openclaw-api.service\nsystemctl restart openclaw-ui.service\n```\n\n**代码目录：** `/opt/openclow`  \n**Python 环境：** `/opt/miniconda/envs/openclaw`\n\n来源：参考信息「服务器部署与更新流程」部分。",
+      "correct": true,
+      "rewritten": "服务器上使用 systemd 管理的 openclow 服务的启动命令是什么？"
+    },
+    {
+      "id": "followup-8",
+      "query": "它为什么返回 0？",
+      "category": "followup",
+      "expected": [
+        "去重",
+        "内容未变",
+        "重复"
+      ],
+      "answer": "根据参考信息，`/rag/ingest` 返回 `chunks: 0` **不一定是失败**。\n\nopenclow 会对相同 `source` 做去重：如果内容没变，会跳过入库，返回 `chunks: 0`。日志中通常会看到 `ingest skipped: content unchanged` 的提示。\n\n**建议**：查看服务日志确认是否有 `ingest skipped` 记录，若有则说明是正常去重跳过，无需处理。若没有该日志，则可能是其他原因，需要进一步排查。\n\n（来源：参考信息“常见问题”部分）",
+      "correct": true,
+      "rewritten": "为什么使用 /rag/ingest 重复导入同一份文档时，返回结果为 0？"
+    },
+    {
+      "id": "followup-9",
+      "query": "那我应该怎么部署？",
+      "category": "followup",
+      "expected": [
+        "IP:8000",
+        "IP:8501",
+        "systemd"
+      ],
+      "answer": "根据参考信息，openclow 项目**实际部署方式为 systemd + conda，不是 Docker**（来源：`## 4.Docker vs systemd confusion`）。\n\n以下是部署相关要点：\n\n## 部署方式\n- **实际环境**：systemd 管理服务 + conda 管理 Python 环境\n- **服务组成**：\n  - 后端 FastAPI（端口 8000）\n  - 前端 Streamlit（端口 8501）\n  - 生产反代 Caddy（80/443，备案通过后启用）\n\n## 当前备案期部署注意\n1. **80/443 端口被封**，Caddy 无法自动 HTTPS，暂用 IP 直连：\n   - 后端：`http://103.236.98.200:8000`\n   - 前端：`http://103.236.98.200:8501`\n2. **配置检查**：确认 `/opt/openclow/.env` 中 `OPENCLAW_API_KEYS` 已正确设置（当前 Key：`oc_qHL-1p5j9f0hwRYGTg28fBId9iapGXWB`）\n\n## 排障提示\n如果服务启动失败，先执行：\n```bash\njournalctl -u openclaw-api.service -n 100\n```\n定位具体错误（来源：`## 原因`部分）。\n\n---\n\n**我没有找到关于具体部署步骤（如 conda 环境创建、systemd 单元文件编写等）的详细记录**，建议参考项目文档或联系部署负责人获取完整部署脚本。",
+      "correct": true,
+      "rewritten": "在备案期间 Caddy 无法使用 80/443 端口的情况下，我应该如何部署我的服务？"
+    },
+    {
+      "id": "followup-10",
+      "query": "它在哪里配置？",
+      "category": "followup",
+      "expected": [
+        "配置",
+        "chunk_size",
+        "settings"
+      ],
+      "answer": "根据参考信息，**没有找到关于“它在哪里配置”的具体记录**。\n\n不过，结合 openclow 项目的架构信息，可以给出以下相关提示：\n\n- **API Key 配置**：位于服务器的 `.env` 文件中（参考“安全注意”部分）。\n- **服务端口配置**：后端默认 8000，前端默认 8501，生产环境通过 Caddy 反代（参考“技术栈”部分）。\n- **RAG 知识库配置**：通过 `POST /rag/ingest` 或 `POST /rag/upload` 接口入库，存储于向量库 ChromaDB（参考“RAG 知识库与记忆的区别”部分）。\n- **记忆配置**：存储于 SQLite `data/memory.db`，需业务代码主动写入（参考“记忆是什么”部分）。\n\n如果您能明确“它”指的是哪个具体组件（如 RAG、记忆、API Key、端口等），我可以给出更精确的定位。",
+      "correct": true,
+      "rewritten": "OpenClow 中知识库切分大小在哪里配置？"
+    },
+    {
+      "id": "oral-1",
+      "query": "openclow 咋跑起来的啊？",
+      "category": "direct",
+      "expected": [
+        "systemd",
+        "/opt/openclow",
+        "不是 Docker"
+      ],
+      "answer": "根据参考信息，openclow 的运行方式如下：\n\n**生产环境实际运行方式（非 Docker）：**\n- 生产服务器上跑的是 **systemd 服务**，不是 Docker 容器\n- 两个服务：\n  - `openclaw-api.service`（后端 API）\n  - `openclaw-ui.service`（前端 UI）\n- 代码目录：`/opt/openclow`（不是 git 仓库）\n\n**更新/启动流程：**\n1. 通过 **SFTP 上传**代码到 `/opt/openclow`\n2. 执行 `systemctl restart` 重启服务\n\n**访问入口：**\n- 后端 API：`http://103.236.98.200:8000`（或 `https://psyidc.com/api`）\n- 前端 UI：`http://103.236.98.200:8501`（或 `https://psyidc.com`）\n\n**排查提示：**\n> 文档可能写的是 Docker 方式（`docker-compose.prod.yml`），但实际生产用的是 systemd + conda 方案。排障第一步永远是验证实际运行环境，不要盲信文档。（来源：典型踩坑 #4）\n\n**日志查看：**\n```bash\njournalctl -u openclaw-api.service -n 100\n```",
+      "correct": true,
+      "rewritten": "openclow 咋跑起来的啊？"
+    },
+    {
+      "id": "oral-2",
+      "query": "我现在打不开 psyidc.com，是不是备案的关系？",
+      "category": "direct",
+      "expected": [
+        "备案",
+        "80",
+        "443",
+        "被封",
+        "IP:8000",
+        "IP:8501"
+      ],
+      "answer": "是的，**psyidc.com 打不开与备案直接相关**。\n\n根据参考信息：\n\n- 域名 `psyidc.com` 当前**备案审核中**，工信部系统尚未能查到（来源：ICP 备案与端口访问）。\n- 备案审核期间，**80 和 443 端口会被封**，因此：\n  - 不能通过 `http://psyidc.com` 访问\n  - 不能通过 `https://psyidc.com` 访问\n  - Caddy 自动 HTTPS 暂时无法工作（来源：备案期端口策略）\n\n**临时访问方式**（备案通过前）：\n\n- 后端 Swagger：`http://103.236.98.200:8000/docs`\n- 前端界面：`http://103.236.98.200:8501`\n\n**备案进度查询**：\n\n- 腾讯云备案控制台：https://console.cloud.tencent.com/beian\n- 工信部官网：https://beian.miit.gov.cn\n\n备案通过后，`https://psyidc.com` 即可正常访问（来源：生产访问方式）。",
+      "correct": true,
+      "rewritten": "我现在打不开 psyidc.com，是不是备案的关系？"
+    },
+    {
+      "id": "oral-3",
+      "query": "swagger 上那个锁点不动怎么回事？",
+      "category": "direct",
+      "expected": [
+        "Authorize",
+        "ApiKeyAuth",
+        "securitySchemes",
+        "X-API-Key"
+      ],
+      "answer": "根据参考信息，Swagger 上锁点不动通常是因为**自定义 `openapi()` 没有声明 `ApiKeyAuth` 安全方案**。\n\n**原因**：  \n在 `src/api/server.py` 中重写 `openapi()` 时，未声明 `securitySchemes` 和全局 `security`，导致 Swagger 页面上锁头图标点了没反应，没有 Authorize 弹窗。\n\n**解决**：  \n在 `src/api/server.py` 重写 `openapi()`，声明 `securitySchemes` 和全局 `security`，添加 `ApiKeyAuth` 安全方案。\n\n---\n\n**补充说明**：  \n如果锁点不动且没有 Authorize 弹窗，请先检查 `openapi()` 是否已正确声明安全方案。若确认已声明但仍无法使用，可参考日志排查（`journalctl -u openclaw-api.service -n 100`）确认服务是否正常。\n\n（来源：参考信息“典型踩坑与排查”第1条）",
+      "correct": true,
+      "rewritten": "swagger 上那个锁点不动怎么回事？"
+    },
+    {
+      "id": "oral-4",
+      "query": "代码改完了，怎么让它生效？",
+      "category": "direct",
+      "expected": [
+        "SFTP",
+        "systemctl restart",
+        "上传"
+      ],
+      "answer": "根据参考信息，代码更新后生效的流程如下：\n\n1. **本地检查**：改完代码后，先执行 `py_compile` 检查语法。\n2. **上传代码**：用 SFTP 将代码上传到服务器 `/opt/openclow` 目录。\n3. **重启服务**：在服务器上执行：\n   ```bash\n   systemctl restart openclaw-api.service\n   systemctl restart openclaw-ui.service\n   ```\n4. **检查状态**：\n   ```bash\n   systemctl status openclaw-api.service\n   journalctl -u openclaw-api.service -n 100 --no-pager\n   ```\n\n**注意**：代码目录 `/opt/openclow` 不是 git 仓库，更新方式是 SFTP 上传后重启 systemd 服务（来源：服务器部署与更新流程）。",
+      "correct": true,
+      "rewritten": "代码改完了，怎么让它生效？"
+    },
+    {
+      "id": "oral-5",
+      "query": "备案到哪查了？",
+      "category": "direct",
+      "expected": [
+        "腾讯云备案控制台",
+        "console.cloud.tencent.com/beian",
+        "腾讯云"
+      ],
+      "answer": "根据参考信息，备案查询方式如下：\n\n**进度查询**：腾讯云备案控制台  \nhttps://console.cloud.tencent.com/beian\n\n**是否通过查询**：工信部官网  \nhttps://beian.miit.gov.cn  \n或站长工具  \nhttps://icp.chinaz.com/psyidc.com\n\n当前状态：备案审核中，工信部系统尚未能查到。（来源：ICP 备案与端口访问 - 备案现状）",
+      "correct": true,
+      "rewritten": "备案到哪查了？"
+    },
+    {
+      "id": "oral-6",
+      "query": "那现在怎么访问呢？",
+      "category": "followup",
+      "expected": [
+        "103.236.98.200:8000",
+        "103.236.98.200:8501",
+        "IP:8000",
+        "IP:8501"
+      ],
+      "answer": "根据参考信息，当前备案审核期间，80 和 443 端口被封，**不能通过域名访问**，但可以通过 IP 加端口直接访问：\n\n- **后端 Swagger**：http://103.236.98.200:8000/docs\n- **前端界面**：http://103.236.98.200:8501\n\n（来源：ICP 备案与端口访问 → 备案期临时访问地址）\n\n另外，SSH（22 端口）也可正常使用。备案通过后，80/443 解封，届时可通过 https://psyidc.com 统一访问。",
+      "correct": true,
+      "rewritten": "备案期间 psyidc.com 的 80/443 端口被封了，现在怎么访问这个网站呢？"
+    },
+    {
+      "id": "oral-7",
+      "query": "它跑在哪？",
+      "category": "followup",
+      "expected": [
+        "8000",
+        "103.236.98.200:8000"
+      ],
+      "answer": "根据参考信息，openclow 项目跑在**生产服务器**上，具体如下：\n\n- **服务器 IP**：`103.236.98.200`\n- **代码目录**：`/opt/openclow`（非 git 仓库，通过 SFTP 上传更新）\n- **运行方式**：systemd 服务（非 Docker），包括：\n  - `openclaw-api.service`（后端，端口 8000）\n  - `openclaw-ui.service`（前端，端口 8501）\n- **生产访问地址**：\n  - 后端：`http://103.236.98.200:8000`\n  - 前端：`http://103.236.98.200:8501`\n- **反向代理**：Caddy（备案通过后使用 `https://psyidc.com`）\n\n来源：参考信息中“生产访问方式”表格及“重要区别”段落。",
+      "correct": true,
+      "rewritten": "OpenClow 后端跑在哪里？"
+    },
+    {
+      "id": "oral-8",
+      "query": "我怎么带上认证？",
+      "category": "followup",
+      "expected": [
+        "X-API-Key",
+        "header",
+        "请求头"
+      ],
+      "answer": "根据参考信息，openclow 使用 **X-API-Key 请求头**进行鉴权，具体带上认证的方式如下：\n\n### 1. 获取 API Key\n- API Key 以 `oc_` 开头，存储在服务器 `/opt/openclow/.env` 的 `OPENCLAW_API_KEYS` 变量中。\n- 示例格式：`oc_qHL-1p5j9f0hwRYGTg28fBId9iapGXWB`\n\n### 2. 在 Swagger 中带上认证\n1. 打开 `http://103.236.98.200:8000/docs`\n2. 点击右上角 **Authorize** 按钮\n3. 输入完整的 API Key（直接粘贴，无需额外格式）\n4. 关闭弹窗后，带锁的接口会自动携带 `X-API-Key` 请求头\n\n### 3. 认证失败表现\n- 未带 Key 或 Key 错误时，接口返回 **401**：\n```json\n{\"detail\": \"Invalid or missing API Key\"}\n```\n\n### 4. 安全注意\n- API Key 属于敏感信息，**不要写入公开仓库**\n- 若怀疑泄露，立即在服务器 `.env` 中更换并重启服务\n- 前端页面不能直接暴露 Key，必须由后端转发\n\n---\n\n**来源**：参考信息「API 鉴权与 Swagger 测试」部分。",
+      "correct": true,
+      "rewritten": "我怎么带上认证？"
+    },
+    {
+      "id": "oral-9",
+      "query": "那个按钮出不来咋办？",
+      "category": "followup",
+      "expected": [
+        "Authorize",
+        "ApiKeyAuth",
+        "securitySchemes",
+        "openapi"
+      ],
+      "answer": "根据参考信息，没有直接找到关于“按钮出不来”的明确记录。不过结合上下文，您可能遇到的是 **Swagger 页面没有 Authorize 按钮** 的问题，参考信息中有相关说明：\n\n**可能原因**：自定义 `openapi()` 没声明 `ApiKeyAuth` 安全方案。\n\n**解决方法**：在 `src/api/server.py` 重写 `openapi()`，声明 `securitySchemes` 和全局 `security`。\n\n---\n\n如果您指的是其他按钮（如前端页面按钮），请补充具体是哪个页面、哪个按钮，我再帮您查找。目前参考信息中没有其他相关记录。",
+      "correct": true,
+      "rewritten": "Swagger 页面上没有 Authorize 弹窗，那个按钮出不来怎么办？"
+    },
+    {
+      "id": "oral-10",
+      "query": "生产上出 500 怎么看日志？",
+      "category": "followup",
+      "expected": [
+        "journalctl",
+        "openclaw-api.service",
+        "日志"
+      ],
+      "answer": "生产环境出现 500 错误，按以下步骤排查：\n\n## 1. 查看后端日志（最直接）\n```bash\n# 查看最近 100 行日志\njournalctl -u openclaw-api.service -n 100 --no-pager\n\n# 实时跟踪日志\njournalctl -u openclaw-api.service -f\n```\n\n## 2. 常见原因对照\n根据参考信息，生产环境 500 通常由以下原因引起：\n- **依赖缺失**：生产环境未安装完整依赖\n- **模型初始化失败**：模型加载或初始化出错\n- **.env 配置不对**：环境变量配置错误\n\n## 3. 检查服务状态\n```bash\nsystemctl status openclaw-api.service\n```\n\n## 4. 前端 500 排查\n如果是前端页面报 500，查看前端日志：\n```bash\njournalctl -u openclaw-ui.service -n 100 --no-pager\n```\n\n## 5. 注意事项\n- 生产环境实际运行的是 **systemd + conda** 方案，不是 Docker（参考信息明确说明）\n- 代码目录在 `/opt/openclow`，更新方式是 SFTP 上传后 `systemctl restart`\n- 不要盲信文档中的 Docker 部署方式\n\n**核心动作**：先执行 `journalctl -u openclaw-api.service -n 100` 看具体报错信息，根据错误内容定位是依赖、配置还是模型问题。",
+      "correct": true,
+      "rewritten": "生产上出 500 怎么看日志？"
+    }
+  ]
+}

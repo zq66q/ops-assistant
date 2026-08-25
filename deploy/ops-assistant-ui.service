@@ -1,0 +1,16 @@
+[Unit]
+Description=ops-assistant UI — Streamlit chat interface
+After=network.target ops-assistant-api.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ops-assistant
+Environment="PATH=/opt/miniconda/envs/openclaw/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/ops-assistant/.env
+ExecStart=/opt/miniconda/envs/openclaw/bin/streamlit run web/app.py --server.port 8601 --server.address 0.0.0.0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
