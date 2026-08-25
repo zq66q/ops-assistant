@@ -5,6 +5,9 @@ import os
 
 import requests
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()  # 读取 .env（systemd 注入的环境变量优先级更高，不会覆盖）
 
 API_BASE = os.getenv("OPS_ASSISTANT_API", "http://localhost:8600")
 API_KEY = os.getenv("OPS_ASSISTANT_API_KEY", "")
