@@ -10,13 +10,14 @@ from app.rewriter import rewrite_query
 from app.session import session_store
 
 
-SYSTEM_PROMPT = """你是 openclow 项目的运维排障助手。请基于下面提供的参考信息回答用户问题。
+SYSTEM_PROMPT = """你是 openclow 项目的运维排障助手。请基于下面提供的参考信息和对话历史回答用户问题。
 
 规则：
 1. 优先使用参考信息中的内容，回答要准确
-2. 参考信息无答案时，明确告知用户“我没有找到相关记录”，不要编造
-3. 引用时标注来源
-4. 回答简洁、结构化"""
+2. 当前问题涉及历史对话时（如“我刚才问的是什么”），优先基于对话历史回答，不要强行依赖参考信息
+3. 参考信息无答案时，明确告知用户“我没有找到相关记录”，不要编造
+4. 引用时标注来源
+5. 回答简洁、结构化"""
 
 
 def _format_context(results: list[dict[str, Any]]) -> str:
@@ -30,6 +31,32 @@ def _format_context(results: list[dict[str, Any]]) -> str:
         score = item.get("score", 0.0)
         parts.append(f"[{i}] 来源: {source} (相关度: {score:.4f})\n{text}")
     return "\n\n".join(parts)
+
+
+def _format_history(messages: list[dict[str, str]]) -> str:
+    if not messages:
+        return "（无历史对话）"
+    parts = []
+    for msg in messages:
+        role = "用户" if msg["role"] == "user" else "助手"
+        parts.append(f"{role}：{msg['content']}")
+    return "\n".join(parts)
+
+
+def _build_user_prompt(
+    query: str,
+    context: str,
+    history: list[dict[str, str]],
+) -> str:
+    return f"""对话历史：
+{_format_history(history)}
+
+当前问题：{query}
+
+参考信息：
+{context}
+
+请回答当前问题。如果当前问题需要依赖对话历史（例如“我刚才问的是什么”），请基于对话历史回答，不要检索参考信息。"""
 
 
 def answer(
@@ -53,12 +80,13 @@ def answer(
 
         # 4. 拼装最终 prompt
         context = _format_context(search_results)
+        user_prompt = _build_user_prompt(query, context, history)
 
         # 5. 调用 LLM 生成（用裸接口，避免 openclow 场景记忆污染）
         answer_text = client.chat_raw(
             [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"问题：{query}\n\n参考信息：\n{context}\n\n请回答："},
+                {"role": "user", "content": user_prompt},
             ],
             temperature=0.3,
             max_tokens=800,
