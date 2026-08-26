@@ -94,8 +94,19 @@ def answer(
     except Exception as exc:
         # openclow 平台故障时给出友好提示，不让前端直接 500
         elapsed_ms = (time.perf_counter() - t0) * 1000
+        # 优先暴露 openclow 返回的真实错误（如 402 Insufficient Balance），
+        # 否则用户只看到笼统的“无法连接”会误以为是连接问题
+        detail = ""
+        if hasattr(exc, "response") and exc.response is not None:
+            try:
+                body = exc.response.json()
+                detail = body.get("detail", "") or str(body)[:200]
+            except Exception:
+                detail = exc.response.text[:200]
+        if not detail:
+            detail = str(exc)
         return {
-            "answer": f"⚠️ openclow 平台暂时无法连接（{type(exc).__name__}），运维助手无法获取参考信息。请检查平台服务状态或稍后再试。",
+            "answer": f"⚠️ openclow 调用失败（{type(exc).__name__}）：{detail}",
             "session_id": session_id,
             "rewritten": query,
             "search_results": [],
