@@ -1,0 +1,80 @@
+{
+  "mode": "live",
+  "cases": 5,
+  "recall@1": 0.9,
+  "recall@3": 1.0,
+  "recall@5": 1.0,
+  "mrr": 1.0,
+  "details": [
+    {
+      "id": "ret-1",
+      "recall@1": 0.5,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "retrieved_sources": [
+        "runbooks/04_health_503",
+        "runbooks/01_model_init_failure",
+        "04_auth_swagger",
+        "corpus/04_auth_swagger",
+        "corpus/04_auth_swagger"
+      ]
+    },
+    {
+      "id": "ret-2",
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "retrieved_sources": [
+        "runbooks/03_resource_exhaustion",
+        "06_troubleshooting",
+        "corpus/06_troubleshooting",
+        "06_troubleshooting",
+        "02_deployment"
+      ]
+    },
+    {
+      "id": "ret-3",
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "retrieved_sources": [
+        "runbooks/02_port_bind_conflict",
+        "03_icp_ports",
+        "corpus/03_icp_ports",
+        "02_deployment",
+        "corpus/02_deployment"
+      ]
+    },
+    {
+      "id": "ret-4",
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "retrieved_sources": [
+        "01_architecture",
+        "corpus/01_architecture",
+        "01_architecture",
+        "04_auth_swagger",
+        "corpus/04_auth_swagger"
+      ]
+    },
+    {
+      "id": "ret-5",
+      "recall@1": 1.0,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "retrieved_sources": [
+        "05_rag_memory",
+        "corpus/05_rag_memory",
+        "05_rag_memory",
+        "corpus/05_rag_memory",
+        "runbooks/04_health_503"
+      ]
+    }
+  ]
+}

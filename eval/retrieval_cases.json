@@ -1,0 +1,13 @@
+[
+  {"id": "ret-1", "query": "服务 /health 返回 503，日志一直报 Invalid API key", "relevant_sources": ["runbooks/01_model_init_failure", "runbooks/04_health_503"]},
+  {"id": "ret-2", "query": "磁盘快满了，服务写入会不会失败？", "relevant_sources": ["runbooks/03_resource_exhaustion"]},
+  {"id": "ret-3", "query": "端口 8000 起不来，日志提示 Address already in use", "relevant_sources": ["runbooks/02_port_bind_conflict"]},
+  {"id": "ret-4", "query": "openclow 的前端跑在哪个端口？", "relevant_sources": ["corpus/01_architecture"]},
+  {"id": "ret-5", "query": "/rag/ingest 返回 chunks:0 是失败了吗？", "relevant_sources": ["corpus/05_rag_memory"]},
+  {"id": "ret-6", "query": "K8s 里部署的服务 Pod 一直 CrashLoopBackOff，起不来", "relevant_sources": ["runbooks/08_k8s_app_crash"]},
+  {"id": "ret-7", "query": "Nginx 一直返回 502 Bad Gateway，后端是 Python 服务", "relevant_sources": ["runbooks/12_nginx_upstream_5xx"]},
+  {"id": "ret-8", "query": "Redis 报 OOM command not allowed，缓存和接口都异常", "relevant_sources": ["runbooks/13_redis_cache"]},
+  {"id": "ret-9", "query": "数据库报 too many connections，接口大量超时", "relevant_sources": ["runbooks/11_db_conn_pool"]},
+  {"id": "ret-10", "query": "网站 HTTPS 访问报证书过期", "relevant_sources": ["runbooks/14_dns_cert_network"]},
+  {"id": "ret-11", "query": "访问接口返回 403 Forbidden，文件也报 Permission denied", "relevant_sources": ["runbooks/15_permission_403_401"]}
+]

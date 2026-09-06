@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Secret scan (gitleaks)
+        uses: zricethezav/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run tests (sim + mock, no external calls)
+        run: python -m pytest -v
+      - name: Run agent eval (mock orchestration)
+        run: python -m eval.run_agent_eval
+      - name: Run retrieval eval (mock metric check)
+        run: python -m eval.run_retrieval_eval

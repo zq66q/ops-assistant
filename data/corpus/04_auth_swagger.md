@@ -1,11 +1,11 @@
-# API 鉴权与 Swagger 测试
+﻿# API 鉴权与 Swagger 测试
 
 ## 鉴权方式
 
 openclow 使用 X-API-Key 请求头鉴权：
 
 ```
-X-API-Key: oc_qHL-1p5j9f0hwRYGTg28fBId9iapGXWB
+X-API-Key: <your_api_key>
 ```
 
 API Key 以 `oc_` 开头，存储在 `/opt/openclow/.env` 的 `OPENCLAW_API_KEYS` 变量中。

@@ -105,3 +105,29 @@ class OpenClowClient:
             r = client.post(self._url("/chat/raw"), json=payload, headers=self.headers)
             r.raise_for_status()
             return r.json().get("content", "")
+
+    def chat_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+        tool_choice: str = "auto",
+        temperature: float = 0.3,
+        max_tokens: int | None = None,
+    ) -> dict[str, Any]:
+        """原生 function-calling 对话（需 openclow /chat/raw 已支持透传 tools）。
+
+        Returns:
+            {"content": str, "tool_calls": [{"id","name","arguments"}] | None}
+        """
+        payload = {
+            "messages": messages,
+            "tools": tools,
+            "tool_choice": tool_choice,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        with httpx.Client(timeout=120) as client:
+            r = client.post(self._url("/chat/raw"), json=payload, headers=self.headers)
+            r.raise_for_status()
+            data = r.json()
+            return {"content": data.get("content", ""), "tool_calls": data.get("tool_calls")}

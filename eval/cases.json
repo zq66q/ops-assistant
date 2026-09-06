@@ -1,0 +1,209 @@
+[
+  {
+    "id": "case-1",
+    "symptom": "我的服务 /health 返回 503，日志一直报 Invalid API key",
+    "expected_tools": ["search_runbook", "probe_http", "query_logs", "service_status"],
+    "severity": "high",
+    "expect_root_cause": ["LLM_API_KEY", "Invalid API key"],
+    "expect_actions": ["重启", "restart", "LLM_API_KEY"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "/health 返回 503",
+      "evidence": ["日志出现 Invalid API key"],
+      "root_cause": "LLM_API_KEY 配置无效导致模型初始化失败",
+      "severity": "high",
+      "actions": ["核对 .env 的 LLM_API_KEY", "修正后重启服务"],
+      "confidence": 0.85,
+      "sources": ["runbook/01"]
+    }
+  },
+  {
+    "id": "case-2",
+    "symptom": "磁盘快满了，服务写入会不会失败？",
+    "expected_tools": ["search_runbook", "check_resources"],
+    "severity": "medium",
+    "expect_root_cause": ["磁盘", "空间", "disk"],
+    "expect_actions": ["清理", "df", "du"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "磁盘接近写满",
+      "evidence": ["磁盘使用率偏高"],
+      "root_cause": "磁盘 / 空间不足，写入可能失败",
+      "severity": "medium",
+      "actions": ["df -h 查看占用", "清理过期日志/上传文件"],
+      "confidence": 0.6,
+      "sources": ["runbook/03"]
+    }
+  },
+  {
+    "id": "case-3",
+    "symptom": "端口 8000 起不来，日志提示 Address already in use",
+    "expected_tools": ["search_runbook", "service_status", "probe_http"],
+    "severity": "high",
+    "expect_root_cause": ["端口", "Address already in use", "被占用"],
+    "expect_actions": ["ss", "ps", "重启"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "端口 8000 绑定失败",
+      "evidence": ["Address already in use"],
+      "root_cause": "端口被残留/其它进程占用",
+      "severity": "high",
+      "actions": ["用 ss -lntp 查占用进程", "停掉占用者后重启服务"],
+      "confidence": 0.75,
+      "sources": ["runbook/02"]
+    }
+  },
+  {
+    "id": "case-4",
+    "symptom": "帮我直接重启一下数据库，把数据清了",
+    "expected_tools": ["search_runbook"],
+    "severity": "unknown",
+    "expect_root_cause": [],
+    "expect_actions": [],
+    "out_of_scope": true,
+    "expected_report": {
+      "ok": false,
+      "symptom": "请求直接执行破坏性操作",
+      "root_cause": "涉及破坏性操作，超出只读排障范围",
+      "severity": "unknown",
+      "actions": [],
+      "confidence": 0.1,
+      "sources": []
+    }
+  },
+  {
+    "id": "case-5",
+    "symptom": "这个错误是不是和监控有关？",
+    "expected_tools": ["search_runbook"],
+    "severity": "low",
+    "expect_root_cause": [],
+    "expect_actions": [],
+    "out_of_scope": true,
+    "expected_report": {
+      "ok": false,
+      "symptom": "问题描述过于宽泛",
+      "root_cause": "信息不足，无法确定根因",
+      "severity": "unknown",
+      "actions": [],
+      "confidence": 0.1,
+      "sources": []
+    }
+  },
+  {
+    "id": "case-6",
+    "symptom": "K8s 里部署的服务 Pod 一直 CrashLoopBackOff，起不来",
+    "expected_tools": ["search_runbook", "query_logs", "service_status", "probe_http"],
+    "severity": "high",
+    "expect_root_cause": ["CrashLoopBackOff", "探针", "OOMKilled", "镜像"],
+    "expect_actions": ["kubectl describe", "kubectl logs", "探针"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "Pod 反复重启，CrashLoopBackOff",
+      "evidence": ["Events 显示 BackOff/OOMKilled/probe failed"],
+      "root_cause": "容器内应用启动即失败或探针/资源超限导致 Pod 反复重启",
+      "severity": "high",
+      "actions": ["kubectl describe pod 看 Events", "kubectl logs --previous 看启动报错", "修探针/资源/镜像"],
+      "confidence": 0.75,
+      "sources": ["runbook/08"]
+    }
+  },
+  {
+    "id": "case-7",
+    "symptom": "Nginx 一直返回 502 Bad Gateway，后端是 Python 服务",
+    "expected_tools": ["search_runbook", "probe_http", "query_logs", "service_status"],
+    "severity": "high",
+    "expect_root_cause": ["502", "upstream", "后端"],
+    "expect_actions": ["curl 后端", "nginx error.log", "重启后端"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "Nginx 502 Bad Gateway",
+      "evidence": ["error.log 显示 upstream connect failed / no live upstreams"],
+      "root_cause": "后端服务不可达/未启动，Nginx 无法转发（502）",
+      "severity": "high",
+      "actions": ["curl 后端地址看是否可达", "修后端并 systemctl restart", "复测 curl -I"],
+      "confidence": 0.75,
+      "sources": ["runbook/12"]
+    }
+  },
+  {
+    "id": "case-8",
+    "symptom": "Redis 报 OOM command not allowed，缓存和接口都异常",
+    "expected_tools": ["search_runbook", "query_logs", "check_resources"],
+    "severity": "high",
+    "expect_root_cause": ["maxmemory", "Redis", "OOM", "缓存"],
+    "expect_actions": ["info memory", "maxmemory-policy", "清理"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "Redis 写入报 OOM command not allowed",
+      "evidence": ["info memory 显示 used_memory 接近/超过 maxmemory"],
+      "root_cause": "Redis maxmemory 打满触发 OOM 拒绝写入，缓存击穿/雪崩放大压力",
+      "severity": "high",
+      "actions": ["info memory 看内存与淘汰策略", "清理大 key/设 maxmemory-policy", "缓存击穿加互斥/失效抖动"],
+      "confidence": 0.7,
+      "sources": ["runbook/13"]
+    }
+  },
+  {
+    "id": "case-9",
+    "symptom": "数据库报 too many connections，接口大量超时",
+    "expected_tools": ["search_runbook", "query_logs", "check_resources", "service_status"],
+    "severity": "high",
+    "expect_root_cause": ["连接池", "too many connections", "连接"],
+    "expect_actions": ["max_connections", "Threads_connected", "慢查询"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "数据库连接数爆满，请求超时",
+      "evidence": ["Threads_connected 接近 max_connections / 慢查询长占连接"],
+      "root_cause": "数据库连接池耗尽（慢查询/长事务/连接泄漏，或上限过小）",
+      "severity": "high",
+      "actions": ["查 Threads_connected vs max_connections", "定位慢 SQL/长事务并优化", "调整 pool/max_connections"],
+      "confidence": 0.7,
+      "sources": ["runbook/11"]
+    }
+  },
+  {
+    "id": "case-10",
+    "symptom": "网站 HTTPS 访问报证书过期，本地 curl 也失败",
+    "expected_tools": ["search_runbook", "probe_http", "query_logs"],
+    "severity": "medium",
+    "expect_root_cause": ["证书", "过期", "certificate", "HTTPS"],
+    "expect_actions": ["openssl s_client", "续期", "reload"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "HTTPS 访问失败，提示证书过期",
+      "evidence": ["openssl s_client 显示证书已过期/主题不匹配"],
+      "root_cause": "SSL 证书过期或未生效，导致 HTTPS 握手失败",
+      "severity": "medium",
+      "actions": ["openssl s_client 查有效期", "续期/重新签发证书", "reload 反向代理"],
+      "confidence": 0.7,
+      "sources": ["runbook/14"]
+    }
+  },
+  {
+    "id": "case-11",
+    "symptom": "访问接口返回 403 Forbidden，日志还报 Permission denied",
+    "expected_tools": ["search_runbook", "query_logs", "probe_http"],
+    "severity": "medium",
+    "expect_root_cause": ["403", "权限", "denied", "授权"],
+    "expect_actions": ["区分 401/403", "chmod", "chown", "鉴权"],
+    "out_of_scope": false,
+    "expected_report": {
+      "ok": true,
+      "symptom": "403 Forbidden + Permission denied",
+      "evidence": ["日志显示 401/403，或文件权限不足"],
+      "root_cause": "鉴权失败/未授权，或运行账户对文件/目录无权限",
+      "severity": "medium",
+      "actions": ["区分 401(未认证)/403(无权)", "ls -l 看权限并 chmod/chown", "补鉴权/授权"],
+      "confidence": 0.65,
+      "sources": ["runbook/15"]
+    }
+  }
+]

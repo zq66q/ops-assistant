@@ -1,7 +1,13 @@
-"""Streamlit 聊天界面。"""
+"""Streamlit 聊天界面 — SSE 流式展示 agent 工具轨迹 + 多用户（按凭证）隔离。
+
+每个用户用自己的 API Key：后端根据 X-API-Key 解析出真实的 user_id（不再信任 X-User-Id 头）。
+本地开发未配置 Key 时，用 X-User-Id 作为便捷占位。
+"""
 from __future__ import annotations
 
+import json
 import os
+from typing import Any
 
 import requests
 import streamlit as st
@@ -14,71 +20,114 @@ try:
         streamlit_js_eval,
     )
     _JS_STORAGE_OK = True
-except ImportError:  # 未安装时退回旧行为：会话只在页面内存里
+except ImportError:
     _JS_STORAGE_OK = False
 
-load_dotenv()  # 读取 .env（systemd 注入的环境变量优先级更高，不会覆盖）
+load_dotenv()
 
 API_BASE = os.getenv("OPS_ASSISTANT_API", "http://localhost:8600")
-API_KEY = os.getenv("OPS_ASSISTANT_API_KEY", "")
+DEFAULT_API_KEY = os.getenv("OPS_ASSISTANT_API_KEY", "")
 
-HEADERS = {"Content-Type": "application/json"}
-if API_KEY:
-    HEADERS["X-API-Key"] = API_KEY
+SID_STORAGE_KEY_BASE = "ops_assistant_session_id"  # 每个 user 一个 key：_<user_id>
 
-# session_id 在浏览器 localStorage 的键名；刷新/重启浏览器后凭它找回会话
-SID_STORAGE_KEY = "ops_assistant_session_id"
-
-st.set_page_config(page_title="运维排障助手", page_icon="🛠️")
+st.set_page_config(page_title="运维排障助手", page_icon="🛠️", layout="wide")
 
 
-def _fetch_history(sid: str) -> list[dict[str, str]]:
-    """从后端拉取会话历史（后端 SQLite 持久化，重启不丢）。"""
+def _headers(user_id: str, api_key: str = "") -> dict[str, str]:
+    h = {"Content-Type": "application/json", "X-User-Id": user_id or "default"}
+    key = api_key or DEFAULT_API_KEY
+    if key:
+        h["X-API-Key"] = key
+    return h
+
+
+def _sid_key(user_id: str) -> str:
+    return f"{SID_STORAGE_KEY_BASE}_{user_id or 'default'}"
+
+
+@st.cache_data(show_spinner=False)
+def _fetch_history(sid: str, user_id: str, api_key: str, version: int) -> list[dict[str, str]]:
     try:
-        r = requests.get(f"{API_BASE}/api/sessions/{sid}/history", headers=HEADERS, timeout=15)
+        r = requests.get(f"{API_BASE}/api/sessions/{sid}/history", headers=_headers(user_id, api_key), timeout=15)
         if r.ok:
             hist = r.json().get("history") or []
-            return [
-                {"role": m.get("role", "user"), "content": m.get("content", "")} for m in hist
-            ]
+            return [{"role": m.get("role", "user"), "content": m.get("content", "")} for m in hist]
+    except Exception:
+        pass
+    return []
+
+
+@st.cache_data(show_spinner=False)
+def _fetch_sessions(user_id: str, api_key: str, version: int) -> list[dict[str, Any]]:
+    try:
+        r = requests.get(f"{API_BASE}/api/sessions", headers=_headers(user_id, api_key), timeout=15)
+        if r.ok:
+            return r.json().get("sessions") or []
+    except Exception:
+        pass
+    return []
+
+
+@st.cache_data(show_spinner=False)
+def _fetch_metrics(user_id: str, api_key: str, version: int) -> dict[str, Any]:
+    try:
+        r = requests.get(f"{API_BASE}/api/metrics", headers=_headers(user_id, api_key), timeout=15)
+        if r.ok:
+            return r.json()
+    except Exception:
+        pass
+    return {}
+
+
+@st.cache_data(show_spinner=False)
+def _fetch_incidents(user_id: str, api_key: str, version: int) -> list[dict[str, Any]]:
+    try:
+        r = requests.get(f"{API_BASE}/api/incidents", headers=_headers(user_id, api_key), timeout=15)
+        if r.ok:
+            return r.json().get("incidents") or []
     except Exception:
         pass
     return []
 
 
 # ---------- 会话恢复 ----------
-# st.session_state 只是页面内存，刷新即清空；这里从 localStorage 找回 session_id，
-# 再用后端 /api/sessions/{id}/history 回填消息，实现"刷新/重启浏览器后对话还在"。
+if "user_id" not in st.session_state:
+    st.session_state.user_id = "default"
+if "api_key" not in st.session_state:
+    st.session_state.api_key = DEFAULT_API_KEY
+if "cache_version" not in st.session_state:
+    st.session_state.cache_version = 0
+if "feedback_ctx" not in st.session_state:
+    st.session_state.feedback_ctx = None
+
+
+def _bump() -> None:
+    """数据变化时使前端缓存失效（下次重拉会话/历史）。"""
+    st.session_state.cache_version = st.session_state.get("cache_version", 0) + 1
+
+
 if not st.session_state.get("sid_checked"):
     saved_sid = ""
     if _JS_STORAGE_OK:
-        # 注意 || '' 兜底：getItem 找不到时返回 null，会和"JS 尚未回传"混淆，
-        # 且 null 不会触发组件重跑；空字符串两个问题都避开。
         saved_sid = streamlit_js_eval(
-            js_expressions=f"localStorage.getItem('{SID_STORAGE_KEY}') || ''",
-            key="ops_sid_load",
+            js_expressions=f"localStorage.getItem('{_sid_key(st.session_state.user_id)}') || ''",
+            key=f"ops_sid_load_{st.session_state.user_id}",
         )
         if saved_sid is None:
-            # 首次加载会短暂走到这里；组件回传结果后自动触发重跑
             st.info("正在恢复会话…")
             st.stop()
     st.session_state.sid_checked = True
     if isinstance(saved_sid, str) and len(saved_sid) == 32:
         st.session_state.session_id = saved_sid
-        st.session_state.messages = _fetch_history(saved_sid)
+        st.session_state.messages = _fetch_history(saved_sid, st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version)
         st.session_state.just_restored = len(st.session_state.messages)
 
 if "session_id" not in st.session_state:
     st.session_state.session_id = None
-
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# 新建会话后顺带清掉 localStorage（延迟到下一轮渲染执行，避免 st.rerun() 打断脚本）
-if st.session_state.pop("clear_storage", False) and _JS_STORAGE_OK:
-    remove_local_storage(SID_STORAGE_KEY)
-
-st.title("🛠️ openclow 运维排障助手")
+st.title("🛠️ 智能运维排障助手")
 
 _restored_count = st.session_state.pop("just_restored", 0)
 if _restored_count:
@@ -86,57 +135,337 @@ if _restored_count:
 
 # ---------- 侧边栏 ----------
 with st.sidebar:
+    st.caption("身份由 **API Key** 决定（多用户鉴权开启时）；用户ID 仅本地免鉴权开发模式用。")
+    new_user = st.text_input("👤 用户ID（本地免鉴权模式用）", value=st.session_state.user_id).strip() or "default"
+    new_key = st.text_input("🔑 API Key（身份由它决定；切用户请改这里）", value=st.session_state.api_key, type="password")
+    changed_user = new_user != st.session_state.user_id
+    changed_key = new_key != st.session_state.api_key
+    st.session_state.user_id = new_user
+    st.session_state.api_key = new_key
+    if changed_user or changed_key:
+        # 切换身份：重置会话 + 清掉对应 storage
+        st.session_state.session_id = None
+        st.session_state.messages = []
+        st.session_state.feedback_ctx = None
+        st.session_state.pop("just_restored", None)
+        st.session_state.pop("ops_session_selector", None)
+        if _JS_STORAGE_OK:
+            remove_local_storage(_sid_key(new_user))
+        st.rerun()
+
     sid = st.session_state.session_id
-    st.caption(f"会话 ID：`{sid[:8]}…`" if sid else "会话 ID：发送首条消息后创建")
+    if sid:
+        st.caption(f"用户：`{st.session_state.user_id}`　会话：`{sid[:8]}…`")
+    else:
+        st.caption(f"用户：`{st.session_state.user_id}`　会话：发送首条消息后创建")
+
     if st.button("🆕 新建会话", use_container_width=True):
         st.session_state.session_id = None
         st.session_state.messages = []
-        st.session_state.clear_storage = True
+        st.session_state.feedback_ctx = None
+        st.session_state.pop("ops_session_selector", None)
+        if _JS_STORAGE_OK:
+            remove_local_storage(_sid_key(st.session_state.user_id))
         st.rerun()
+
     st.divider()
-    st.caption(
-        "会话双重持久化：浏览器 localStorage 记 session_id（刷新/重启浏览器不丢），"
-        "后端 SQLite 存消息（服务重启不丢）。"
-    )
+    st.caption("📜 历史会话")
+    sessions = _fetch_sessions(st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version)
+    if sessions:
+        for s in sessions:
+            sid_ = s["session_id"]
+            title = f"{s['title']} ({s['msg_count']}条)"
+            is_current = sid_ == st.session_state.session_id
+            c1, c2 = st.columns([0.78, 0.22])
+            with c1:
+                label = ("" if is_current else "🟢 ") + title
+                if st.button(label, key=f"sel_{sid_}", use_container_width=True, disabled=is_current):
+                    st.session_state.session_id = sid_
+                    st.session_state.messages = _fetch_history(sid_, st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version)
+                    if _JS_STORAGE_OK:
+                        set_local_storage(_sid_key(st.session_state.user_id), sid_)
+                    st.rerun()
+            with c2:
+                if st.button("❌", key=f"del_{sid_}", help="删除该会话", use_container_width=True):
+                    try:
+                        r = requests.delete(
+                            f"{API_BASE}/api/sessions/{sid_}",
+                            headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=15,
+                        )
+                        if r.ok:
+                            _bump()
+                            if st.session_state.session_id == sid_:
+                                st.session_state.session_id = None
+                                st.session_state.messages = []
+                                st.session_state.feedback_ctx = None
+                                if _JS_STORAGE_OK:
+                                    remove_local_storage(_sid_key(st.session_state.user_id))
+                            st.rerun()
+                        else:
+                            st.error(f"删除失败：HTTP {r.status_code}")
+                    except Exception as exc:
+                        st.error(f"删除失败：{exc}")
+    else:
+        st.caption("暂无历史会话")
+
+    st.divider()
+    c_confirm, c_btn = st.columns([0.66, 0.34])
+    with c_confirm:
+        confirm_all = st.checkbox("确认删除全部历史会话", key="confirm_clear_all")
+    with c_btn:
+        if st.button("🗑 一键删除全部", key="clear_all", use_container_width=True, disabled=not confirm_all):
+            try:
+                r = requests.delete(
+                    f"{API_BASE}/api/sessions",
+                    headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=15,
+                )
+                if r.ok:
+                    _bump()
+                    st.session_state.session_id = None
+                    st.session_state.messages = []
+                    st.session_state.feedback_ctx = None
+                    if _JS_STORAGE_OK:
+                        remove_local_storage(_sid_key(st.session_state.user_id))
+                    st.rerun()
+                else:
+                    st.error(f"删除失败：HTTP {r.status_code}")
+            except Exception as exc:
+                st.error(f"删除失败：{exc}")
+
+    st.divider()
+    st.caption("📥 沉淀知识库（把新错误教会它）")
+    with st.expander("添加一条排障知识", expanded=False):
+        if st.button("📋 预填最近一次回答（可再改）", key="k_prefill", use_container_width=True):
+            _last = st.session_state.get("last_diagnosis") or {}
+            if _last:
+                st.session_state["k_title"] = _last.get("title", "")
+                st.session_state["k_symptom"] = _last.get("symptom", "")
+                st.session_state["k_root"] = _last.get("root_cause", "")
+                st.session_state["k_actions"] = ",".join(_last.get("actions", []))
+                st.rerun()
+            else:
+                st.info("还没有可预填的诊断，请先问一个问题")
+        _q = st.text_input("故障名", key="k_title")
+        _s = st.text_area("症状", key="k_symptom")
+        _r = st.text_area("根因", key="k_root")
+        _a = st.text_input("处置步骤（逗号分隔）", key="k_actions")
+        if st.button("提交沉淀进知识库", key="k_submit", use_container_width=True):
+            if _q and _r:
+                _actions = [x.strip() for x in _a.split(",") if x.strip()]
+                try:
+                    _rr = requests.post(
+                        f"{API_BASE}/api/knowledge",
+                        json={"title": _q, "symptom": _s, "root_cause": _r, "actions": _actions},
+                        headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=40,
+                    )
+                    if _rr.ok:
+                        _d = _rr.json()
+                        _bump()
+                        st.success(f"已沉淀进知识库：`{_d.get('source')}`（chunks={_d.get('chunks')}），下次可检索")
+                    else:
+                        st.error(f"沉淀失败：HTTP {_rr.status_code}")
+                except Exception as exc:
+                    st.error(f"沉淀失败：{exc}")
+            else:
+                st.warning("请至少填「故障名」和「根因」")
+
+    st.divider()
+    st.caption("📊 真实业务指标（解决率 / 满意率 / 平均耗时 / 巡检诊断）")
+    metrics = _fetch_metrics(st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version)
+    fb = metrics.get("feedback") or {}
+    inc = metrics.get("incidents") or {}
+    with st.expander("指标", expanded=False):
+        if st.button("🔄 刷新指标", key="metrics_refresh", use_container_width=True):
+            _bump()
+            st.rerun()
+        # 安全格式化：指标可能为 None（如还没有"已解决/未解决"判断或好评差评），此时显示"—"而非 0/报错
+        def _pct(v):
+            return f"{v*100:.0f}%" if v is not None else "—"
+        def _secs(v):
+            return f"{v}s" if v is not None else "—"
+        if fb.get("total"):
+            st.metric("解决率", _pct(fb.get("resolve_rate")))
+            st.metric("满意率", _pct(fb.get("satisfaction_rate")))
+            st.metric("平均解决耗时", _secs(fb.get("avg_resolve_seconds")))
+            st.caption(f"反馈数 {fb.get('total')}（已解决 {fb.get('resolved')} / 未解决 {fb.get('unresolved')}；好评 {fb.get('positive')} / 差评 {fb.get('negative')}；已评判断数 {fb.get('resolved', 0) + fb.get('unresolved', 0)}）")
+        else:
+            st.caption("暂无反馈。去回答下方点 👍/👎 并标记是否解决，就会累计。")
+        if inc.get("total"):
+            st.metric("巡检发现 incident", f"{inc.get('total')}")
+            st.metric("自动诊断成功率", _pct(inc.get("diagnosis_rate")))
+            st.metric("MTTR(发现→恢复)", _secs(inc.get("mttr_seconds")))
+            st.caption(f"open {inc.get('open')} / 已解决 {inc.get('resolved')}；诊断 {inc.get('diagnosed')} / 有效 {inc.get('diagnosis_ok')}；平均诊断耗时 {inc.get('avg_diag_ms') or '—'}ms")
+        else:
+            st.caption("暂无巡检 incident。后台健康巡检发现异常会自动产生。")
+
+    st.divider()
+    st.caption("🚨 巡检 Incident（真实异常，自动/手动诊断）")
+    incidents = _fetch_incidents(st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version)
+    with st.expander("Incident 列表", expanded=False):
+        c_head, c_clear = st.columns([0.68, 0.32])
+        with c_clear:
+            if st.button("🗑 清空", key="incidents_clear", use_container_width=True, help="清空 incident 记录，重置指标面板"):
+                try:
+                    _r = requests.post(
+                        f"{API_BASE}/api/incidents/clear",
+                        headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=15,
+                    )
+                    if _r.ok:
+                        _bump()
+                        st.rerun()
+                    else:
+                        st.error(f"清空失败：HTTP {_r.status_code}")
+                except Exception as exc:
+                    st.error(f"清空失败：{exc}")
+        if not incidents:
+            st.caption("暂无 incident。")
+        for it in incidents[:10]:
+            head = f"#{it['id']} · {it['target']} · {'🚨' if it['status'] == 'open' else '✅'}{'open' if it['status'] == 'open' else 'resolved'}"
+            st.markdown(f"**{head}**")
+            st.caption(it.get("summary", "")[:80])
+            if it.get("status") == "open" and not it.get("diagnosed"):
+                if st.button("🔍 用 agent 诊断", key=f"diag_{it['id']}", use_container_width=True):
+                    try:
+                        _r = requests.post(
+                            f"{API_BASE}/api/incidents/{it['id']}/diagnose",
+                            headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=180,
+                        )
+                        if _r.ok:
+                            _bump()
+                            st.rerun()
+                        else:
+                            st.error(f"诊断失败：HTTP {_r.status_code}")
+                    except Exception as exc:
+                        st.error(f"诊断失败：{exc}")
+            elif it.get("diagnosis"):
+                st.caption(f"诊断：{it['diagnosis'][:120]}{'…' if len(it['diagnosis']) > 120 else ''}")
+
+    st.divider()
+    st.caption("身份由凭证决定（后端按 X-API-Key 解析 user）；localStorage 记 session_id，后端 SQLite 存消息。")
+
+
+def _render_tool_trail(tool_lines: list[str]) -> str:
+    return "\n\n".join(tool_lines) if tool_lines else ""
+
+
+def _render_feedback(ctx: dict[str, Any]) -> None:
+    """渲染一次回答的反馈控件（👍/👎 + 是否解决 + 用时），写入真实业务指标。"""
+    sid = ctx.get("session_id", "")
+    if not sid:
+        return
+    done_key = f"fb_done_{sid}"
+    if st.session_state.get(done_key):
+        st.caption("✅ 已记录本次反馈，感谢！")
+        return
+    st.markdown("---")
+    st.markdown("**请为这次回答评分（用于真实业务指标）**")
+    c = st.columns(3)
+    rating = c[0].radio("评价", ["👍 有帮助", "👎 没帮助", "跳过"], index=2,
+                        horizontal=True, key=f"fb_r_{sid}", label_visibility="collapsed")
+    resolved = c[1].radio("是否解决", ["已解决", "未解决", "跳过"], index=2,
+                          horizontal=True, key=f"fb_s_{sid}", label_visibility="collapsed")
+    secs = c[2].number_input("用时(秒)", min_value=0, value=0, step=1,
+                             key=f"fb_c_{sid}", label_visibility="collapsed")
+    if st.button("📤 提交反馈", key=f"fb_submit_{sid}", type="primary"):
+        rating_val = {"👍 有帮助": 1, "👎 没帮助": -1, "跳过": 0}[rating]
+        res_val = {"已解决": 1, "未解决": 0, "跳过": -1}[resolved]
+        secs_val = int(secs) if int(secs) > 0 else None
+        try:
+            _r = requests.post(
+                f"{API_BASE}/api/feedback",
+                json={
+                    "session_id": sid,
+                    "query": ctx.get("query", ""),
+                    "rating": rating_val,
+                    "resolved": res_val,
+                    "resolve_seconds": secs_val,
+                },
+                headers=_headers(st.session_state.user_id, st.session_state.api_key),
+                timeout=15,
+            )
+            if _r.ok:
+                st.session_state[done_key] = True
+                _bump()
+                st.rerun()
+            else:
+                st.error(f"反馈提交失败：HTTP {_r.status_code}")
+        except Exception as exc:
+            st.error(f"反馈提交失败：{exc}")
+
 
 # ---------- 历史消息 ----------
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-query = st.chat_input("请输入你的运维问题，例如：备案期间怎么访问服务？")
+query = st.chat_input("请输入运维问题，例如：服务 /health 返回 503，日志报 Invalid API key")
 if query:
+    user_id = st.session_state.user_id
+    api_key = st.session_state.api_key
     st.session_state.messages.append({"role": "user", "content": query})
     with st.chat_message("user"):
         st.markdown(query)
 
     with st.chat_message("assistant"):
-        with st.spinner("思考中..."):
-            try:
-                r = requests.post(
-                    f"{API_BASE}/api/chat",
-                    json={"query": query, "session_id": st.session_state.session_id},
-                    headers=HEADERS,
-                    timeout=120,
-                )
-                r.raise_for_status()
-                data = r.json()
-                answer_text = data["answer"]
+        placeholder = st.empty()
+        tool_lines: list[str] = []
+        answer = ""
+        try:
+            with requests.post(
+                f"{API_BASE}/api/chat/stream",
+                json={"query": query, "session_id": st.session_state.session_id, "user_id": user_id},
+                headers=_headers(user_id, api_key), stream=True, timeout=180,
+            ) as r:
+                if r.status_code != 200:
+                    raise RuntimeError(f"HTTP {r.status_code}: {r.text[:200]}")
+                for raw in r.iter_lines(decode_unicode=True):
+                    if not raw or not raw.startswith("data: "):
+                        continue
+                    try:
+                        evt = json.loads(raw[6:])
+                    except json.JSONDecodeError:
+                        continue
+                    etype = evt.get("type")
+                    if etype == "session":
+                        new_sid = evt.get("session_id")
+                        if new_sid and new_sid != st.session_state.session_id:
+                            st.session_state.session_id = new_sid
+                            _bump()  # 新建了会话 -> 历史列表变化
+                            if _JS_STORAGE_OK:
+                                set_local_storage(_sid_key(user_id), new_sid)
+                    elif etype == "tool":
+                        tool_lines.append(
+                            f"🔧 调用工具 `{evt['tool']}`（步骤 {evt['step']}）" + ("✅" if evt.get("ok") else "⚠️")
+                        )
+                        placeholder.markdown(_render_tool_trail(tool_lines) + "\n\n_正在收集证据…_")
+                    elif etype == "final":
+                        answer = evt.get("answer", "")
+                        rewritten = (evt.get("rewritten") or "").strip()
+                        if rewritten and rewritten != query:
+                            answer = f"> 🔍 多轮追问已改写为独立问题：**{rewritten}**（据此检索）\n\n{answer}"
+                        # 捕获最近一次诊断，供「沉淀知识库」一键预填
+                        _rep = evt.get("report") or {}
+                        st.session_state.last_diagnosis = {
+                            "title": (rewritten or query),
+                            "symptom": _rep.get("symptom", "") or "",
+                            "root_cause": _rep.get("root_cause", "") or "",
+                            "actions": _rep.get("actions") or [],
+                            "sources": _rep.get("sources") or [],
+                        }
+                        placeholder.markdown(_render_tool_trail(tool_lines) + ("\n\n" if tool_lines else "") + answer)
+                    elif etype == "error":
+                        answer = f"⚠️ {evt.get('error', '未知错误')}"
+        except Exception as exc:
+            answer = f"调用失败：{exc}"
 
-                # 会话 id 变化（新会话首条消息）→ 写入 localStorage，刷新后可找回
-                if data["session_id"] != st.session_state.session_id:
-                    if _JS_STORAGE_OK:
-                        set_local_storage(SID_STORAGE_KEY, data["session_id"])
-                    st.session_state.session_id = data["session_id"]
+        final_md = (_render_tool_trail(tool_lines) + ("\n\n" if tool_lines else "")) + answer
+        placeholder.markdown(final_md)
+        st.session_state.messages.append({"role": "assistant", "content": final_md})
+        _bump()  # 本轮对话已写入会话 -> 历史列表条数/时间更新
+        # 记录本次回答的上下文，供下方反馈控件使用
+        st.session_state.feedback_ctx = {"query": query, "session_id": st.session_state.session_id}
 
-                # 展示改写信息（调试用，面试演示可以隐藏）
-                if data.get("rewritten") and data["rewritten"] != query:
-                    st.caption(f"🔍 改写后检索：{data['rewritten']}")
-                if data.get("sources"):
-                    sources = ", ".join(s["source"] for s in data["sources"][:3])
-                    st.caption(f"📚 参考来源：{sources}")
-            except Exception as exc:
-                answer_text = f"调用失败：{exc}"
-
-        st.markdown(answer_text)
-        st.session_state.messages.append({"role": "assistant", "content": answer_text})
+# ---------- 用户反馈（针对最近一次回答；仅当前会话显示）----------
+_ctx = st.session_state.feedback_ctx
+if _ctx and _ctx.get("session_id") == st.session_state.session_id:
+    _render_feedback(_ctx)

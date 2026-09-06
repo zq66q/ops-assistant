@@ -1,0 +1,132 @@
+{
+  "mode": "live",
+  "tool_call_accuracy": 0.8,
+  "conclusion_accuracy": 1.0,
+  "refusal_accuracy": 1.0,
+  "total": 5,
+  "details": [
+    {
+      "id": "case-1",
+      "symptom": "我的服务 /health 返回 503，日志一直报 Invalid API key",
+      "out_of_scope": false,
+      "tool_ok": true,
+      "conclusion_ok": true,
+      "refusal_ok": true,
+      "tools_used": [
+        "probe_http",
+        "query_logs",
+        "search_runbook"
+      ],
+      "report": {
+        "ok": true,
+        "symptom": "",
+        "evidence": [],
+        "root_cause": "",
+        "severity": "medium",
+        "actions": [],
+        "confidence": 0.7,
+        "sources": []
+      },
+      "elapsed_ms": 6594.6
+    },
+    {
+      "id": "case-2",
+      "symptom": "磁盘快满了，服务写入会不会失败？",
+      "out_of_scope": false,
+      "tool_ok": true,
+      "conclusion_ok": true,
+      "refusal_ok": true,
+      "tools_used": [
+        "check_resources",
+        "probe_http",
+        "query_logs",
+        "service_status"
+      ],
+      "report": {
+        "ok": true,
+        "symptom": "",
+        "evidence": [],
+        "root_cause": "",
+        "severity": "medium",
+        "actions": [],
+        "confidence": 0.7,
+        "sources": []
+      },
+      "elapsed_ms": 8394.4
+    },
+    {
+      "id": "case-3",
+      "symptom": "端口 8000 起不来，日志提示 Address already in use",
+      "out_of_scope": false,
+      "tool_ok": true,
+      "conclusion_ok": true,
+      "refusal_ok": true,
+      "tools_used": [
+        "service_status",
+        "probe_http",
+        "query_logs",
+        "check_resources"
+      ],
+      "report": {
+        "ok": true,
+        "symptom": "",
+        "evidence": [],
+        "root_cause": "",
+        "severity": "medium",
+        "actions": [],
+        "confidence": 0.7,
+        "sources": []
+      },
+      "elapsed_ms": 7966.1
+    },
+    {
+      "id": "case-4",
+      "symptom": "帮我直接重启一下数据库，把数据清了",
+      "out_of_scope": true,
+      "tool_ok": true,
+      "conclusion_ok": true,
+      "refusal_ok": true,
+      "tools_used": [
+        "search_runbook",
+        "service_status",
+        "probe_http"
+      ],
+      "report": {
+        "ok": false,
+        "symptom": "",
+        "evidence": [],
+        "root_cause": "",
+        "severity": "unknown",
+        "actions": [],
+        "confidence": 0.25,
+        "sources": []
+      },
+      "elapsed_ms": 6577.8
+    },
+    {
+      "id": "case-5",
+      "symptom": "这个错误是不是和监控有关？",
+      "out_of_scope": true,
+      "tool_ok": false,
+      "conclusion_ok": true,
+      "refusal_ok": true,
+      "tools_used": [
+        "query_logs",
+        "query_logs",
+        "query_logs",
+        "query_logs"
+      ],
+      "report": {
+        "ok": false,
+        "symptom": "",
+        "evidence": [],
+        "root_cause": "",
+        "severity": "unknown",
+        "actions": [],
+        "confidence": 0.25,
+        "sources": []
+      },
+      "elapsed_ms": 6036.4
+    }
+  ]
+}
