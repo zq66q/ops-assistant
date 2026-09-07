@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Any
 
 from dotenv import load_dotenv
 
@@ -57,6 +58,14 @@ class Settings:
     ops_log_dir: str = os.getenv("OPS_LOG_DIR", "/opt/openclaw/logs")
     ops_service_name: str = os.getenv("OPS_SERVICE_NAME", "openclaw-api")
 
+    # ── 自动修复 + 审批（human-in-the-loop）──
+    # remediate_mode: "sim"=模拟执行(安全、可测、不碰真实服务); "real"=执行白名单命令(仅服务器)
+    remediate_mode: str = os.getenv("OPS_REMEDIATE_MODE", "sim")
+    # remediate_auto: 可【自动执行】的 risk 等级(逗号分隔)。默认 "low"：low 自动、high 必须人工审批。
+    remediate_auto: set[str] = frozenset(os.getenv("OPS_REMEDIATE_AUTO", "low").split(","))
+    # remediate_verify_url: 执行后验证用的健康检查地址（可选）
+    remediate_verify_url: str = os.getenv("OPS_REMEDIATE_VERIFY_URL", "")
+
     # ── 真实业务指标：巡检 / incident ──
     # monitors_enabled: 是否开启后台健康巡检（真实 incident 的来源；不依赖真人）
     monitors_enabled: bool = os.getenv("OPS_MONITOR_ENABLED", "true").lower() == "true"
@@ -96,6 +105,54 @@ class Settings:
             "openclow-api": self.ops_target_health,
             "openclow-ui": self.ops_target_ui,
         }
+
+    @property
+    def remediation_allowlist(self) -> dict[str, dict[str, Any]]:
+        """自动修复白名单：action -> {risk, desc, cmd(real 模式执行), args?}。
+
+        可用 OPS_REMEDIATE_ALLOWED={"restart_service":{"risk":"low",...},...} 覆盖（JSON）。
+        - 不在白名单的动作：拒绝（仅作建议）。
+        - risk=low 且 OPS_REMEDIATE_AUTO 含 low：自动执行。
+        - risk=high：强制人工审批，不自动执行。
+        """
+        import json
+        import typing as _t
+
+        default: dict[str, dict[str, _t.Any]] = {
+            "restart_service": {
+                "risk": "low",
+                "desc": "重启指定服务（低风险、幂等）",
+                "cmd": "systemctl restart {service}",
+                "args": ["service"],
+            },
+            "clear_cache": {
+                "risk": "low",
+                "desc": "清理服务缓存（低风险、幂等）",
+                "cmd": "systemctl restart {service} && > /tmp/{service}.cache.clear",
+                "args": ["service"],
+            },
+            "update_config": {
+                "risk": "high",
+                "desc": "修改服务关键配置（高风险，需人工审批）",
+                "cmd": "apply_config --key {key} --value {value}",
+                "args": ["key", "value"],
+            },
+            "restart_database": {
+                "risk": "high",
+                "desc": "重启数据库（高风险，需人工审批）",
+                "cmd": "systemctl restart {service}",
+                "args": ["service"],
+            },
+        }
+        raw = os.getenv("OPS_REMEDIATE_ALLOWED", "")
+        if raw:
+            try:
+                val = json.loads(raw)
+                if isinstance(val, dict) and val:
+                    return val
+            except json.JSONDecodeError:
+                pass
+        return default
 
     @property
     def users(self) -> dict[str, str]:

@@ -61,6 +61,9 @@ streamlit run web/app.py --server.port 8601        # 前端（另开终端）
 | `OPS_MONITOR_INTERVAL_S` | 巡检间隔（秒） | `60` |
 | `OPS_MONITOR_AUTO_DIAGNOSE` | 巡检发现异常是否自动调 agent 诊断 | `true` |
 | `OPS_MONITOR_TARGETS` | 巡检靶点 `{"name":"url"}`（JSON） | 探 openclow 平台 + 前端 |
+| `OPS_REMEDIATE_MODE` | 自动修复执行：`sim`(模拟) / `real`(执行白名单命令) | `sim` |
+| `OPS_REMEDIATE_AUTO` | 可自动执行的 risk 等级（逗号分隔） | `low` |
+| `OPS_REMEDIATE_ALLOWED` | 修复白名单 `{action:{risk,desc,cmd}}`（JSON） | 内置4个动作 |
 
 ## API 端点
 
@@ -77,6 +80,9 @@ streamlit run web/app.py --server.port 8601        # 前端（另开终端）
 | `GET /api/incidents` | 巡检发现的最新 incident 列表 |
 | `POST /api/incidents/{id}/diagnose` | 用 agent 对某 incident 做一次诊断 |
 | `POST /api/incidents/clear` | 清空 incident 记录（巡检/调试，重置指标面板） |
+| `POST /api/remediation/request` | 发起修复请求（低风险自动执行 / 高风险生成待审批） |
+| `GET /api/remediation` / `/pending` | 修复记录 / 待审批列表 |
+| `POST /api/remediation/{id}/approve` / `reject` | 批准执行 / 拒绝某条修复 |
 
 ## 评测
 
@@ -142,6 +148,17 @@ pytest -v
 - **诊断成功率** = agent 对 incident 给出有效诊断（report.ok）的比例。
 
 > 说明：指标展示的是**机制就绪**——真实数据一进来即自动变成可汇报指标。若要得到"真实用户产生"的业务指标，仍需要真实流量/真实故障数据喂入（或用 `--live` 连真实平台）。这一块正是从"演示"跨到"可落地"的关键。
+
+## 自动修复 + 审批（human-in-the-loop）
+
+把 agent 从"只诊断+建议"升级为"**能发处置、但受控**"：既能真正动手，又由**风险分级 + 白名单 + 审批门槛**兜住安全。
+
+- **风险分级**：`OPS_REMEDIATE_ALLOWED` 里每个动作标 `risk`。`low`（重启无状态服务/清缓存，幂等）且 `OPS_REMEDIATE_AUTO` 含 `low` → **自动执行**；`high`（改配置/重启数据库）→ **强制人工审批**，批准后才执行。
+- **白名单**：不在白名单的动作一律**拒绝**（仅作建议），危险/未知操作需人工处理 —— 这是安全边界。
+- **执行器**：`OPS_REMEDIATE_MODE=sim` 默认，模拟执行、不碰真实服务（安全/可测/演示）；`=real` 在服务器执行白名单命令。执行后可用 `OPS_REMEDIATE_VERIFY_URL` 验证，成功则**自动关闭关联 incident（串起 MTTR）**。
+- **审计**：每次修复都写入 `tool_audit` + `remediation_approvals`（谁/何时/动作/风险/结果/审批状态），可追溯。
+
+接口：`POST /api/remediation/request`（发起）、`GET /api/remediation[/pending]`（列表）、`POST /api/remediation/{id}/approve|reject`（批准/拒绝）。前端「🛠 自动修复 + 审批」面板可看到待审批并批准/拒绝，也可直接发起测试请求。
 
 ## 安全性
 

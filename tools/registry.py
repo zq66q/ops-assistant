@@ -69,6 +69,7 @@ def register_default_tools() -> None:
     """一次性登记内置工具（幂等）。"""
     import tools.logs as logs  # 内联导入，打破循环
     import tools.probe as probe
+    import tools.remediate as remediate
     import tools.resources as resources
     import tools.runbook as runbook
     import tools.service as service
@@ -78,6 +79,7 @@ def register_default_tools() -> None:
     register(resources.TOOL)
     register(service.TOOL)
     register(runbook.TOOL)
+    register(remediate.TOOL)
 
 
 register_default_tools()

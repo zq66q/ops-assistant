@@ -300,6 +300,85 @@ def diagnose_incident_endpoint(incident_id: int, force: bool = False, user_id: s
     }
 
 
+# ── 自动修复 + 审批（human-in-the-loop）──
+
+
+class RemediationRequest(BaseModel):
+    action: str = Field(..., description="动作名：restart_service/clear_cache/update_config/restart_database")
+    target: str = Field(default="", description="目标服务/主机名")
+    service: str = Field(default="", description="要操作的服务名")
+    incident_id: int | None = Field(default=None, description="关联 incident id（可选）")
+
+
+def _remediate_payload(req: RemediationRequest) -> dict[str, Any]:
+    from tools.remediate import execute as rem_execute
+
+    return rem_execute(req.model_dump(exclude_none=True))
+
+
+@app.post("/api/remediation/request")
+def request_remediation(req: RemediationRequest, user_id: str = Depends(authenticate)) -> dict[str, Any]:
+    """直接发起一个修复请求（低风险自动执行 / 高风险生成待审批）。用于可靠演示/测试。"""
+    result = _remediate_payload(req)
+    # 记录审计
+    session_store.audit_tool_call(
+        session_id=req.target or "remediation", tool="remediate",
+        args=req.model_dump(exclude_none=True), evidence=str(result.get("evidence", ""))[:2000],
+        ok=bool(result.get("ok", False)), user_id=user_id,
+    )
+    return result
+
+
+@app.get("/api/remediation", dependencies=[Depends(authenticate)])
+def list_remediation(status: str | None = None, limit: int = 100, user_id: str = Depends(authenticate)) -> dict[str, Any]:
+    """列出修复记录（可按 status 过滤：pending/approved/rejected/executed/error）。"""
+    return {"remediation": session_store.list_remediation(status=status, limit=limit)}
+
+
+@app.get("/api/remediation/pending", dependencies=[Depends(authenticate)])
+def list_pending_remediation(limit: int = 100, user_id: str = Depends(authenticate)) -> dict[str, Any]:
+    """列出待审批的修复请求。"""
+    return {"remediation": session_store.list_remediation(status="pending", limit=limit)}
+
+
+def _perform_approved(rid: int) -> dict[str, Any]:
+    from tools.remediate import _allowed, _execute, _verify
+
+    rec = session_store.get_remediation(rid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Remediation not found")
+    if rec["status"] != "pending":
+        return {"ok": True, "id": rid, "cached": True, "status": rec["status"], "result": rec["result"]}
+    item = _allowed(rec["action"])
+    if item is None:
+        session_store.set_remediation_status(rid, "error", "动作不在白名单，拒绝执行")
+        return {"ok": False, "id": rid, "status": "error", "result": "动作不在白名单，拒绝执行"}
+    session_store.set_remediation_status(rid, "approved", "")
+    res = _execute(rec["action"], rec["args"] or {})
+    if res["ok"] and rec.get("incident_id"):
+        session_store.resolve_incident(int(rec["incident_id"]))
+    status = "executed" if res["ok"] else "error"
+    session_store.set_remediation_status(rid, status, res["txt"] + "\n" + _verify())
+    result = {"ok": res["ok"], "id": rid, "status": status, "result": res["txt"], "incident_id": rec.get("incident_id")}
+    return result
+
+
+@app.post("/api/remediation/{rid}/approve")
+def approve_remediation(rid: int, user_id: str = Depends(authenticate)) -> dict[str, Any]:
+    """批准并执行一条待审批的修复（批准后才执行，写入审计）。"""
+    return _perform_approved(rid)
+
+
+@app.post("/api/remediation/{rid}/reject")
+def reject_remediation(rid: int, user_id: str = Depends(authenticate)) -> dict[str, Any]:
+    """拒绝一条待审批的修复。"""
+    rec = session_store.get_remediation(rid)
+    if not rec:
+        raise HTTPException(status_code=404, detail="Remediation not found")
+    session_store.set_remediation_status(rid, "rejected", "人工拒绝")
+    return {"ok": True, "id": rid, "status": "rejected"}
+
+
 if __name__ == "__main__":
     import uvicorn
 

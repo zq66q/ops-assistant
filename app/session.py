@@ -113,6 +113,27 @@ class SessionStore:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_incidents_target ON incidents(target, status)")
+            # 自动修复审批：高风险/需确认的处置动作，待人工批准后才执行
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS remediation_approvals (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL DEFAULT 'default',
+                    action TEXT NOT NULL,
+                    target TEXT NOT NULL DEFAULT '',
+                    args TEXT NOT NULL DEFAULT '{}',
+                    summary TEXT NOT NULL DEFAULT '',
+                    risk TEXT NOT NULL DEFAULT 'high',
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    incident_id INTEGER,
+                    result TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    decided_at TIMESTAMP,
+                    executed_at TIMESTAMP
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_remediation_status ON remediation_approvals(status, user_id)")
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, col: str, ddl_type: str) -> None:
@@ -589,6 +610,134 @@ class SessionStore:
             with sqlite3.connect(self.db_path) as conn:
                 cur = conn.execute(f"DELETE FROM incidents WHERE {cond}", params)
                 return cur.rowcount
+
+    # ------------------------------------------------------------------
+    # 自动修复审批（human-in-the-loop）
+    # ------------------------------------------------------------------
+
+    def create_remediation(
+        self,
+        action: str,
+        summary: str,
+        risk: str,
+        user_id: str = "default",
+        target: str = "",
+        args: dict[str, Any] | None = None,
+        incident_id: int | None = None,
+    ) -> int:
+        """记录一条待审批/待执行的修复请求。"""
+        import json
+
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.execute(
+                    "INSERT INTO remediation_approvals "
+                    "(user_id, action, target, args, summary, risk, status, incident_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)",
+                    (user_id, action, target, json.dumps(args or {}, ensure_ascii=False),
+                     summary[:1000], risk, incident_id),
+                )
+                return int(cur.lastrowid)
+
+    def list_remediation(
+        self, status: str | None = None, user_id: str | None = None, limit: int = 100
+    ) -> list[dict[str, Any]]:
+        cond = "1=1"
+        params: list[Any] = []
+        if status is not None:
+            cond += f" AND status = ?"
+            params.append(status)
+        if user_id is not None:
+            cond += " AND user_id = ?"
+            params.append(user_id)
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    f"SELECT id, user_id, action, target, args, summary, risk, status, "
+                    f"incident_id, result, created_at, decided_at, executed_at "
+                    f"FROM remediation_approvals WHERE {cond} ORDER BY id DESC LIMIT ?",
+                    params + [limit],
+                ).fetchall()
+                import json
+
+                return [
+                    {
+                        "id": r["id"],
+                        "user_id": r["user_id"],
+                        "action": r["action"],
+                        "target": r["target"],
+                        "args": json.loads(r["args"] or "{}"),
+                        "summary": r["summary"],
+                        "risk": r["risk"],
+                        "status": r["status"],
+                        "incident_id": r["incident_id"],
+                        "result": r["result"],
+                        "created_at": r["created_at"],
+                        "decided_at": r["decided_at"],
+                        "executed_at": r["executed_at"],
+                    }
+                    for r in rows
+                ]
+
+    def get_remediation(self, rid: int) -> dict[str, Any] | None:
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                r = conn.execute(
+                    "SELECT id, user_id, action, target, args, summary, risk, status, "
+                    "incident_id, result, created_at, decided_at, executed_at "
+                    "FROM remediation_approvals WHERE id = ? LIMIT 1",
+                    (rid,),
+                ).fetchone()
+                if not r:
+                    return None
+                import json
+
+                return {
+                    "id": r["id"], "user_id": r["user_id"], "action": r["action"],
+                    "target": r["target"], "args": json.loads(r["args"] or "{}"),
+                    "summary": r["summary"], "risk": r["risk"], "status": r["status"],
+                    "incident_id": r["incident_id"], "result": r["result"],
+                    "created_at": r["created_at"], "decided_at": r["decided_at"],
+                    "executed_at": r["executed_at"],
+                }
+
+    def set_remediation_status(
+        self, rid: int, status: str, result: str = "", incident_id: int | None = None
+    ) -> bool:
+        """更新审批状态（approved/rejected/executed/error），并写时间戳/结果。"""
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                if status in ("approved", "rejected"):
+                    cur = conn.execute(
+                        "UPDATE remediation_approvals SET status = ?, result = ?, decided_at = CURRENT_TIMESTAMP "
+                        "WHERE id = ?",
+                        (status, result[:4000] if status == "rejected" else "", rid),
+                    )
+                elif status in ("executed", "error"):
+                    cur = conn.execute(
+                        "UPDATE remediation_approvals SET status = ?, result = ?, executed_at = CURRENT_TIMESTAMP "
+                        "WHERE id = ?",
+                        (status, result[:4000], rid),
+                    )
+                else:
+                    cur = conn.execute(
+                        "UPDATE remediation_approvals SET status = ?, result = ? WHERE id = ?",
+                        (status, result[:4000], rid),
+                    )
+                return cur.rowcount > 0
+
+    def resolve_incident(self, incident_id: int) -> bool:
+        """把某 incident 标记为已解决（供自动修复成功后调用，串起 MTTR）。"""
+        with self._lock:
+            with sqlite3.connect(self.db_path) as conn:
+                cur = conn.execute(
+                    "UPDATE incidents SET status = 'resolved', resolved_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ? AND status = 'open'",
+                    (incident_id,),
+                )
+                return cur.rowcount > 0
 
 
 session_store = SessionStore()

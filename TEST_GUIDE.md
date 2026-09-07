@@ -112,6 +112,33 @@ curl http://127.0.0.1:8600/api/incidents
 - **MTTR = 8 秒**（机器自动测量；`diagnosis_rate=None` 因为阶段 11.4 关审计诊断，仅测 MTTR 不需要 LLM）
 - `GET /api/metrics`：`incidents.total=1, open=0, resolved=1, mttr_seconds=8.0`
 
+## 12. 自动修复 + 审批（human-in-the-loop）
+> `OPS_REMEDIATE_MODE=sim` 默认（模拟执行，不碰真实服务）。前提：agent 先诊断，再按需发起修复；你也可用「请求修复（测试）」按钮直接触发。
+
+### 12.1 低风险自动执行
+侧边栏「🛠 自动修复 + 审批 → 请求修复（测试）」：
+- 动作选 `restart_service`，service 填 `openclaw-api` → 点「🚀 发起修复请求」。
+- ✅ 结果提示 `risk=low，executed=True`（模拟自动执行，未真动服务）。
+- 若填了关联 `incident_id`，执行成功后会**自动关闭该 incident（恢复，计入 MTTR）**。
+
+### 12.2 高风险强制审批
+- 动作选 `update_config` 或 `restart_database` → 发起。
+- ✅ 结果 `risk=high，executed=False`，生成 `approval_id`。
+- 到「待审批修复」面板：点「✅ 批准执行」→ 变 `executed`；或点「⛔ 拒绝」→ `rejected`。
+
+### 12.3 白名单外一律拒绝
+- 在「请求修复」填白名单外动作（如 `drop_all_tables`）→ 结果 `ok=False，risk=forbidden`（仅建议，不执行）。
+
+### 12.4 命令行（curl）
+```bash
+curl -X POST http://127.0.0.1:8600/api/remediation/request -H "Content-Type: application/json" -H "X-API-Key: <key>" \
+  -d '{"action":"restart_service","service":"openclaw-api","target":"openclaw-api"}'
+curl -X POST http://127.0.0.1:8600/api/remediation/request -H "Content-Type: application/json" -H "X-API-Key: <key>" \
+  -d '{"action":"update_config","key":"LLM_API_KEY","value":"x"}'
+curl http://127.0.0.1:8600/api/remediation/pending -H "X-API-Key: <key>"
+curl -X POST http://127.0.0.1:8600/api/remediation/1/approve -H "X-API-Key: <key>"
+```
+
 ## 常见问题
 - **改了代码不生效**：必须重启后端；前端看 Streamlit 是否提示「Source file changed」→ 点 Rerun。
 - **sim vs real**：`OPS_TOOL_MODE=sim`（默认，不碰真实主机）；`real` 对真实服务探活/日志/资源（非服务端主机会降级为样本）。

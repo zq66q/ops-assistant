@@ -90,6 +90,18 @@ def _fetch_incidents(user_id: str, api_key: str, version: int) -> list[dict[str,
     return []
 
 
+@st.cache_data(show_spinner=False)
+def _fetch_remediation(user_id: str, api_key: str, version: int, status: str | None = None) -> list[dict[str, Any]]:
+    try:
+        url = f"{API_BASE}/api/remediation/pending" if status == "pending" else f"{API_BASE}/api/remediation"
+        r = requests.get(url, headers=_headers(user_id, api_key), timeout=15)
+        if r.ok:
+            return r.json().get("remediation") or []
+    except Exception:
+        pass
+    return []
+
+
 # ---------- 会话恢复 ----------
 if "user_id" not in st.session_state:
     st.session_state.user_id = "default"
@@ -339,6 +351,95 @@ with st.sidebar:
                         st.error(f"诊断失败：{exc}")
             elif it.get("diagnosis"):
                 st.caption(f"诊断：{it['diagnosis'][:120]}{'…' if len(it['diagnosis']) > 120 else ''}")
+
+    st.divider()
+    st.caption("🛠 自动修复 + 审批（human-in-the-loop）")
+    pending = _fetch_remediation(st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version, status="pending")
+    records = _fetch_remediation(st.session_state.user_id, st.session_state.api_key, st.session_state.cache_version, status=None)
+
+    # 持久反馈：上次发起/审批的结果（不被 rerun 清掉）
+    _last = st.session_state.get("rem_last")
+    if _last:
+        if _last.get("error"):
+            st.error(_last["error"])
+        else:
+            st.info(
+                f"已发起：`{_last.get('action')}` risk=**{_last.get('risk')}** "
+                f"executed=**{_last.get('executed')}** approval_id={_last.get('approval_id') or '—'}"
+            )
+            if _last.get("approval_id"):
+                st.caption("↑ 这是一条**待审批**，请到「待审批修复」点【批准执行】或【拒绝】。")
+            elif _last.get("executed"):
+                st.caption("↑ 低风险已**自动执行**（模拟）。可从下方「最近修复记录」看结果。")
+
+    with st.expander("待审批修复", expanded=False):
+        if st.button("🔄 刷新", key="rem_refresh", use_container_width=True):
+            _bump()
+            st.rerun()
+        if not pending:
+            st.caption("暂无待审批修复。")
+        for it in pending[:10]:
+            st.markdown(f"**#{it['id']} · {it['action']} · {it['risk']}**")
+            st.caption(it.get("summary", "")[:100])
+            c_app, c_rej = st.columns(2)
+            with c_app:
+                if st.button("✅ 批准执行", key=f"app_{it['id']}", use_container_width=True):
+                    try:
+                        _r = requests.post(f"{API_BASE}/api/remediation/{it['id']}/approve",
+                                           headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=60)
+                        _d = _r.json() if _r.ok else {"error": f"HTTP {_r.status_code}"}
+                        st.session_state["rem_last"] = {"action": it["action"], "risk": it["risk"], "executed": _d.get("ok", False), "approval_id": None}
+                        _bump()
+                        st.rerun()
+                    except Exception as exc:
+                        st.session_state["rem_last"] = {"error": f"批准失败：{exc}"}
+                        st.rerun()
+            with c_rej:
+                if st.button("⛔ 拒绝", key=f"rej_{it['id']}", use_container_width=True):
+                    try:
+                        requests.post(f"{API_BASE}/api/remediation/{it['id']}/reject",
+                                      headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=15)
+                        st.session_state["rem_last"] = {"action": it["action"], "risk": it["risk"], "executed": False, "approval_id": None}
+                        _bump()
+                        st.rerun()
+                    except Exception as exc:
+                        st.session_state["rem_last"] = {"error": f"拒绝失败：{exc}"}
+                        st.rerun()
+
+    # 最近修复记录（所有状态，含自动执行/已批准/已拒绝，展示结果）
+    with st.expander("最近修复记录", expanded=False):
+        if not records:
+            st.caption("暂无修复记录。")
+        for it in records[:10]:
+            _status_icon = {"executed": "✅", "pending": "⏳", "rejected": "⛔", "approved": "🟡", "error": "❌"}.get(it.get("status"), "•")
+            st.markdown(f"**{_status_icon} #{it['id']} · {it['action']} · {it['risk']} · {it['status']}**")
+            st.caption((it.get("summary", "") or "")[:80])
+            if it.get("result"):
+                st.caption(f"结果：{it['result'][:120]}{'…' if len(it['result']) > 120 else ''}")
+
+    # 测试用：直接发起一个修复请求
+    with st.expander("请求修复（测试）", expanded=False):
+        action = st.selectbox("动作", ["restart_service", "clear_cache", "update_config", "restart_database"], key="rem_action")
+        service = st.text_input("service", value="openclaw-api", key="rem_service")
+        incident_id = st.number_input("incident_id（可选）", min_value=0, value=0, step=1, key="rem_inc")
+        if st.button("🚀 发起修复请求", key="rem_send", use_container_width=True):
+            payload = {"action": action, "service": service, "target": service}
+            if int(incident_id) > 0:
+                payload["incident_id"] = int(incident_id)
+            try:
+                _r = requests.post(f"{API_BASE}/api/remediation/request", json=payload,
+                                   headers=_headers(st.session_state.user_id, st.session_state.api_key), timeout=60)
+                if _r.ok:
+                    _d = _r.json()
+                    st.session_state["rem_last"] = {"action": action, "risk": _d.get("risk"), "executed": _d.get("executed"), "approval_id": _d.get("approval_id")}
+                    _bump()
+                    st.rerun()
+                else:
+                    st.session_state["rem_last"] = {"error": f"请求失败：HTTP {_r.status_code}"}
+                    st.rerun()
+            except Exception as exc:
+                st.session_state["rem_last"] = {"error": f"请求失败：{exc}"}
+                st.rerun()
 
     st.divider()
     st.caption("身份由凭证决定（后端按 X-API-Key 解析 user）；localStorage 记 session_id，后端 SQLite 存消息。")
